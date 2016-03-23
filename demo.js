@@ -7,12 +7,16 @@ Header.defaultProps = { name: '头部' };
 
 
 var Input = preact.createClass({
+    componentWillMount: function () { console.log('Will-Input'); },
+    componentDidMount: function () { console.log('Did-Input'); },
     render: function (props, state) {
         return h('input', { type: 'text', value: props.inputStr, oninput: props.inputCall });
     }
 });
 
 var Bottom = preact.createClass({
+    componentWillMount: function () { console.log('Will-Bottom'); },
+    componentDidMount: function () { console.log('Did-Bottom'); },
     getInitialState: function () {
         return { inputStr: 'ddd' };
     },
@@ -25,6 +29,8 @@ var Bottom = preact.createClass({
 });
 
 var Content = preact.createClass({
+    componentWillMount: function () { console.log('Will-Content'); },
+    componentDidMount: function () { console.log('Did-Content'); },
     render: function (props, state) {
         var items = [1, 2, 3, 4, 5].map(function (item) {
             return h('li', { id: item }, props.name + props.children[0] + item);
@@ -35,6 +41,8 @@ var Content = preact.createClass({
 });
 
 var Body = preact.createClass({
+    componentWillMount: function () { console.log('Will-Body'); },
+    componentDidMount: function () { console.log('Did-Body'); },
     render: function (props, state) {
         return h(Content, { name: props.prefix }, 'item');
     }
@@ -42,6 +50,8 @@ var Body = preact.createClass({
 
 
 var App = preact.createClass({
+    componentWillMount: function () { console.log('Will-App'); },
+    componentDidMount: function () { console.log('Did-App'); },
     render: function (props, state) {
         return h('div', null, h(Header, { prefix: 'head：' }), h(Body, { prefix: 'body-' }), h(Bottom, { prefix: 'bottom：' }));
     }
