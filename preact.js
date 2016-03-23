@@ -13,7 +13,7 @@
         /** @type {object<string>|undefined} */
         this.attributes = attributes;
 
-        /** @type {array<VNode>|undefined} */
+        /** @type {array<VNode>|string|undefined} */
         this.children = children;
     }
 
@@ -194,6 +194,12 @@
         }
         return (node === document) ? true : false;
     };
+    var removeNode = function(node) {
+        var p = node.parentNode;
+        if (p) {
+            p.removeChild(node);
+        }
+    };
 
     var options = {
         /** 如果`TRUE`，`prop`变化将同步触发组件更新.*/
@@ -266,14 +272,19 @@
                     arr[0] = _p;
                 }
                 for (var j = 0; j < arr.length; j++) {
+                    if (falsey(arr[j])) {
+                        continue;
+                    }
+
                     var child = arr[j],
-                        simple = !falsey(child) && !(child instanceof VNode);
+                        simple = (typeof child !== 'object' && typeof child !== 'function');
+
                     if (simple) {
                         child = String(child);
                     }
                     if (simple && lastSimple) {
                         children[children.length - 1] += child;
-                    } else if (!falsey(child)) {
+                    } else {
                         children.push(child);
                     }
                     lastSimple = simple;
@@ -518,10 +529,7 @@
     }
 
     function cleanNode(node) {
-        var p = node.parentNode;
-        if (p) {
-            p.removeChild(node);
-        }
+        removeNode(node);
         if (getNodeType(node) === 3) {
             return;
         }
@@ -560,7 +568,7 @@
                 out = createNode(nodeName);
             } else if (toLowerCase(dom.nodeName) !== nodeName) {
                 out = createNode(nodeName);
-                appendChildren(out, toArray(dom.childNodes)); //?dont understand! need this line?
+                //appendChildren(out, toArray(dom.childNodes)); //?dont understand! need this line?
                 recollectNodeTree(dom);
             }
 
@@ -687,14 +695,11 @@
 
         var component = node._component;
         if (component) { //遇到组件节点则调用unmountComponent。（remove = 组件回收周期?false:true） => !unmountOnly
-            unmountComponent(node, component, !unmountOnly);
+            unmountComponent(component, !unmountOnly);
         } else {
             if (!unmountOnly) { //非组件回收周期需要回收节点
                 if (getNodeType(node) !== 1) {
-                    var p = node.parentNode;
-                    if (p) {
-                        p.removeChild(node);
-                    }
+                    removeNode(node);
                     return;
                 }
                 collectNode(node);
@@ -852,7 +857,7 @@
                 var inst = component._component;
                 toUnmount = inst;
                 if (toUnmount && toUnmount.constructor !== childComponent) {
-                    unmountComponent(toUnmount.base, toUnmount, true);
+                    unmountComponent(toUnmount, true);
                     inst = null;
                 }
 
@@ -876,7 +881,7 @@
                 // 销毁高阶组件链接
                 toUnmount = component._component;
                 if (toUnmount) {
-                    unmountComponent(toUnmount.base, toUnmount, true);
+                    unmountComponent(toUnmount, true);
                     cbase = component._component = null;
                 }
 
@@ -973,7 +978,7 @@
             dom = c.base;
         } else {
             if (c) {
-                unmountComponent(dom, c, true);
+                unmountComponent(c, true);
                 oldDom = null;
             }
             dom = createComponentFromVNode(oldDom, vnode, context);
@@ -1002,30 +1007,23 @@
 
     /** 从DOM中移除一个component并且回收它.当为顶级组件时remove为true*/
 
-    function unmountComponent(dom, component, remove) {
+    function unmountComponent(component, remove) {
         hook(component, '_ref', null);
         hook(component, 'componentWillUnmount');
 
         var inner = component._component;
-        if (inner) {
-            unmountComponent(dom, inner);
-        }
-
         var base = component.base;
 
-        if (base) {
-            if (remove) {
-                var p = base.parentNode;
-                if (p) {
-                    p.removeChild(base);
-                }
-            }
-            removeOrphanedChildren(base.childNodes, true);
+        if (inner) {
+            unmountComponent(inner); //the leaf of "high order component link" that will execute "else"
+        } else {
+            base && removeOrphanedChildren(base.childNodes, true);
         }
 
         if (remove) {
             component._parentComponent = null;
             collectComponent(component);
+            base && removeNode(base);
         }
 
         hook(component, 'componentDidUnmount');
