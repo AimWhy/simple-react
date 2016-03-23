@@ -23,9 +23,6 @@
     var SYNC_RENDER = {
         renderSync: true
     };
-    var DOM_RENDER = {
-        build: true
-    };
 
     var EMPTY = {};
     var EMPTY_BASE = '';
@@ -245,14 +242,6 @@
             return obj[name](a, b, c);
         }
         return void(0);
-    }
-
-    /** 调用组件和子组件的挂钩函数type【递归】.*/
-
-    function deepHook(obj, type) {
-        do {
-            hook(obj, type);
-        } while (obj = obj._component);
     }
 
     var SHARED_TEMP_ARRAY = [];
