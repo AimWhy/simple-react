@@ -191,6 +191,12 @@
         ch.port2.postMessage('');
     }) : setTimeout;
 
+    var inDocument = function(node) {
+        while (node && node !== document) {
+            node = node.parentNode;
+        }
+        return (node === document) ? true : false;
+    };
 
     var options = {
         /** 如果`TRUE`，`prop`变化将同步触发组件更新.*/
@@ -565,7 +571,7 @@
                 out = createNode(nodeName);
             } else if (toLowerCase(dom.nodeName) !== nodeName) {
                 out = createNode(nodeName);
-                appendChildren(out, toArray(dom.childNodes));
+                appendChildren(out, toArray(dom.childNodes)); //?dont understand! need this line?
                 recollectNodeTree(dom);
             }
 
@@ -643,21 +649,12 @@
                 child2 = diff(child2, vchild, context);
 
                 if (dom.childNodes[i] !== child2) {
-                    var component = child2.parentNode !== dom && child2._component,
-                        next = dom.childNodes[i + 1];
-
-                    if (component) {
-                        deepHook(component, 'componentWillMount');
-                    }
+                    var next = dom.childNodes[i + 1];
 
                     if (next) {
                         dom.insertBefore(child2, next);
                     } else {
                         dom.appendChild(child2);
-                    }
-
-                    if (component) {
-                        deepHook(component, 'componentDidMount');
                     }
                 }
             }
@@ -677,7 +674,7 @@
         }
     }
 
-    /** 回收在VTree中未引用的子节点.*/
+    /** 回收节点列表.unmountOnly：是否是组件回收周期*/
 
     function removeOrphanedChildren(children, unmountOnly) {
         for (var i = children.length; i--;) {
@@ -688,7 +685,7 @@
         }
     }
 
-    /** 回收整个node节点树. */
+    /** 回收整个node节点树.unmountOnly：是否是组件回收周期 */
 
     function recollectNodeTree(node, unmountOnly) {
         // @TODO: Need to make a call on whether Preact should remove nodes not created by itself.
@@ -700,10 +697,10 @@
         }
 
         var component = node._component;
-        if (component) {
+        if (component) { //遇到组件节点则调用unmountComponent。（remove = 组件回收周期?false:true） => !unmountOnly
             unmountComponent(node, component, !unmountOnly);
         } else {
-            if (!unmountOnly) { //不为组件时回收节点
+            if (!unmountOnly) { //非组件回收周期需要回收节点
                 if (getNodeType(node) !== 1) {
                     var p = node.parentNode;
                     if (p) {
@@ -818,12 +815,7 @@
         hook(component, '_ref', component);
     }
 
-    /** Render a Component, triggering necessary lifecycle events and taking High-Order Components into account.
-	*	@param {Component} component
-	*	@param {Object} [opts]    [opts.build=false]:If `true`, component will build and store a DOM node if not already associated with one.
-	*/
-
-    function renderComponent(component, opts) {
+    function renderComponent(component) {
         if (component._disableRendering) {
             return void(0);
         }
@@ -836,7 +828,7 @@
             previousProps = component.prevProps || props,
             previousState = component.prevState || state,
             previousContext = component.prevContext || context,
-            isUpdate = component.base;
+            isUpdate = inDocument(component.base);
 
         if (isUpdate) {
             component.props = previousProps;
@@ -850,6 +842,8 @@
             component.props = props;
             component.state = state;
             component.context = context;
+        } else {
+            hook(component, 'componentWillMount');
         }
 
         component.prevProps = component.prevState = component.prevContext = null;
@@ -867,8 +861,9 @@
                 // 建立高阶组件链接
 
                 var inst = component._component;
-                if (inst && inst.constructor !== childComponent) {
-                    toUnmount = inst;
+                toUnmount = inst;
+                if (toUnmount && toUnmount.constructor !== childComponent) {
+                    unmountComponent(toUnmount.base, toUnmount, true);
                     inst = null;
                 }
 
@@ -881,16 +876,8 @@
                     inst._parentComponent = component;
                     component._component = inst;
 
-                    if (component.base) {
-                        deepHook(inst, 'componentWillMount');
-                    }
-
                     setComponentProps(inst, childProps, NO_RENDER, childContext);
-                    renderComponent(inst, DOM_RENDER);
-
-                    if (component.base) {
-                        deepHook(inst, 'componentDidMount');
-                    }
+                    renderComponent(inst);
                 }
 
                 base = inst.base;
@@ -900,12 +887,11 @@
                 // 销毁高阶组件链接
                 toUnmount = component._component;
                 if (toUnmount) {
+                    unmountComponent(toUnmount.base, toUnmount, true);
                     cbase = component._component = null;
                 }
 
-                if (component.base || opts && opts.build) {
-                    base = diff(cbase, rendered || EMPTY_BASE, childContext);
-                }
+                base = diff(cbase, (rendered || EMPTY_BASE), childContext);
             }
 
             if (component.base && base !== component.base) {
@@ -915,15 +901,12 @@
                 }
             }
 
-            if (toUnmount) {
-                unmountComponent(toUnmount.base, toUnmount, true);
-            }
-
             component.base = base;
 
             if (base) {
                 var componentRef = component,
                     t = component;
+
                 while (t = t._parentComponent) {
                     componentRef = t;
                 }
@@ -933,6 +916,9 @@
 
             if (isUpdate) {
                 hook(component, 'componentDidUpdate', previousProps, previousState, previousContext);
+            } else {
+                hook(component, 'componentDidMount');
+                component._isMounted = true;
             }
         }
 
@@ -986,11 +972,11 @@
 
     function buildComponentFromVNode(dom, vnode, context) {
         var c = dom && dom._component,
+            isOwner = c && (dom._componentConstructor === vnode.nodeName),
             oldDom = dom;
 
-        var isOwner = c && dom._componentConstructor === vnode.nodeName;
         while (c && !isOwner && (c = c._parentComponent)) {
-            isOwner = c.constructor === vnode.nodeName;
+            isOwner = (c.constructor === vnode.nodeName);
         }
 
         if (isOwner) {
@@ -999,14 +985,13 @@
         } else {
             if (c) {
                 unmountComponent(dom, c, true);
-                dom = oldDom = null;
+                oldDom = null;
             }
-            dom = createComponentFromVNode(dom, vnode, context);
+            dom = createComponentFromVNode(oldDom, vnode, context);
             if (oldDom && dom !== oldDom) {
                 recollectNodeTree(oldDom);
             }
         }
-
         return dom;
     }
 
@@ -1021,7 +1006,7 @@
         }
 
         setComponentProps(component, props, NO_RENDER, context);
-        renderComponent(component, DOM_RENDER);
+        renderComponent(component);
 
         return component.base;
     }
@@ -1036,10 +1021,11 @@
         if (inner) {
             unmountComponent(dom, inner);
         }
+
         var base = component.base;
 
         if (base) {
-            if (remove !== false) {
+            if (remove) {
                 var p = base.parentNode;
                 if (p) {
                     p.removeChild(base);
@@ -1054,13 +1040,15 @@
         }
 
         hook(component, 'componentDidUnmount');
+        component._isMounted = true;
     }
 
     function Component(props, context) {
-        this._dirty = this._disableRendering = false;
+        this._dirty = this._disableRendering = this._isMounted = false;
         this._linkedStates = {};
         this._renderCallbacks = [];
-        this.prevState = this.prevProps = this.prevContext = this.base = this._parentComponent = this._component = this._ref = null;
+        this._parentComponent = this._component = this._ref = null;
+        this.prevState = this.prevProps = this.prevContext = this.base = null;
         this.context = context || {};
         this.props = props || {};
         this.state = hook(this, 'getInitialState') || {};
@@ -1090,7 +1078,22 @@
 
             triggerComponentRender(this);
         },
-        forceUpdate: function() {
+        setProps: function() {
+        },
+        replaceState: function() {
+        },
+        replaceProps: function() {
+        },
+        isMounted: function() {
+            return this._isMounted;
+        },
+        getDOMNode: function() {
+            return this.base;
+        },
+        forceUpdate: function(callback) {
+            if (callback) {
+                this._renderCallbacks.push(callback);
+            }
             renderComponent(this);
         },
         render: function(props, state) {
@@ -1099,19 +1102,12 @@
     });
 
     function render(vnode, parent, merge) {
-        var existing = merge && merge._component && merge._componentConstructor === vnode.nodeName,
-            built = diff(merge, vnode),
-            isNewCreatedComponent = !existing && built._component;
+        var built = diff(merge, vnode);
 
-        if (isNewCreatedComponent) {
-            deepHook(isNewCreatedComponent, 'componentWillMount');
-        }
         if (built.parentNode !== parent) {
             parent.appendChild(built);
         }
-        if (isNewCreatedComponent) {
-            deepHook(isNewCreatedComponent, 'componentDidMount');
-        }
+
         return built;
     }
 
