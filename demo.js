@@ -33,7 +33,7 @@ var Content = preact.createClass({
     componentDidMount: function () { console.log('Did-Content'); },
     render: function (props, state) {
         var items = [1, 2, 3, 4, 5].map(function (item) {
-            return h('li', { id: item }, props.name + props.children[0] + item);
+            return h('li', { id: item }, props.name + props.children[0] + item, props.children[1]);
         });
 
         return h('ul', null, items);
@@ -44,9 +44,19 @@ var Body = preact.createClass({
     componentWillMount: function () { console.log('Will-Body'); },
     componentDidMount: function () { console.log('Did-Body'); },
     render: function (props, state) {
-        return h(Content, { name: props.prefix }, 'item');
+        return h(Content, { name: props.prefix }, 'item', h(SubA));
     }
 });
+
+var SubA = preact.createClass({
+    componentWillMount: function () { console.log('Will-SubA'); },
+    componentDidMount: function () { console.log('Did-SubA'); },
+    render: function (props, state) {
+        return h('a', { href: 'https://www.baidu.com/' }, '链接');
+    }
+});
+
+
 
 
 var App = preact.createClass({
