@@ -568,7 +568,7 @@
                 out = createNode(nodeName);
             } else if (toLowerCase(dom.nodeName) !== nodeName) {
                 out = createNode(nodeName);
-                //appendChildren(out, toArray(dom.childNodes)); //?dont understand! need this line?
+                appendChildren(out, toArray(dom.childNodes)); //?dont understand! need this line?
                 recollectNodeTree(dom);
             }
 
@@ -685,9 +685,6 @@
     /** 回收整个node节点树.unmountOnly：是否是组件回收周期 */
 
     function recollectNodeTree(node, unmountOnly) {
-        // @TODO: Need to make a call on whether Preact should remove nodes not created by itself.
-        // 目前行为是删除它. Discussion: https://github.com/developit/preact/issues/39
-
         var attrs = node[ATTR_KEY];
         if (attrs) {
             hook(attrs, 'ref', null);
@@ -1051,25 +1048,49 @@
 
             return c[cacheKey] || (c[cacheKey] = createLinkedState(this, key, eventPath));
         },
-        setState: function(state, callback) {
-            var s = this.state;
-            if (!this.prevState) {
-                this.prevState = clone(s);
+        setState: function(state, callback, isReplace) {
+            if (typeof callback === 'boolean') {
+                isReplace = callback;
+                callback = null;
             }
-
-            extend(s, isFunction(state) ? state(s, this.props) : state);
-
+            if (!this.prevState) {
+                this.prevState = clone(this.state);
+            }
             if (callback) {
                 this._renderCallbacks.push(callback);
             }
 
+            state = isFunction(state) ? state(this.state, this.props) : state;
+
+            if (isReplace) {
+                this.state = state;
+            } else {
+                extend(this.state, state);
+            }
+
             triggerComponentRender(this);
         },
-        setProps: function() {
-        },
-        replaceState: function() {
-        },
-        replaceProps: function() {
+        setProps: function(props, callback, isReplace) {
+            if (typeof callback === 'boolean') {
+                isReplace = callback;
+                callback = null;
+            }
+            if (!this.prevProps) {
+                this.prevProps = clone(this.props);
+            }
+            if (callback) {
+                this._renderCallbacks.push(callback);
+            }
+
+            props = isFunction(props) ? props(this.state, this.props) : props;
+
+            if (isReplace) {
+                this.props = props;
+            } else {
+                extend(this.props, props);
+            }
+
+            setComponentProps(this, this.props, SYNC_RENDER, this.context);
         },
         isMounted: function() {
             return this._isMounted;
