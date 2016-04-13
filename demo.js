@@ -67,4 +67,4 @@ var App = preact.createClass({
     }
 });
 
-preact.render(h(App), document.body);
+preact.render(document.getElementById('why'),h(App));
