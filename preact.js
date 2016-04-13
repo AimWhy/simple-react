@@ -1,38 +1,95 @@
-(function(global, factory) {
-    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-        typeof define === 'function' && define.amd ? define(factory) :
-            (global.preact = factory());
-}
-)(this, function() {
+window.preact = (function (global) {
     'use strict';
 
-    function VNode(nodeName, attributes, children) {
-        /** @type {string|function<pure/Constructor>} */
-        this.nodeName = nodeName;
-
-        /** @type {object<string>|undefined} */
-        this.attributes = attributes;
-
-        /** @type {array<VNode>|string|undefined} */
-        this.children = children;
-    }
-
-    var NO_RENDER = {
-        render: false
+    var isFunction = function (obj) {
+        return 'function' === typeof obj;
     };
-    var SYNC_RENDER = {
-        renderSync: true
+
+    var isString = function (obj) {
+        return 'string' === typeof obj;
     };
+
+    var isSimple = function (obj) {
+        var type = typeof obj;
+        return (type !== 'function' && type !== 'object');
+    };
+
+    var hasOwnProperty = function () {
+        var _hasOwnProperty = Object.prototype.hasOwnProperty;
+        return function (obj, prop) {
+            return _hasOwnProperty.call(obj, prop);
+        };
+    } ();
+
+    var extend = function (obj, props) {
+        for (var i in props) {
+            if (hasOwnProperty(props, i)) {
+                obj[i] = props[i];
+            }
+        }
+        return obj;
+    };
+
+    var clone = function (obj) {
+        var out = {};
+        for (var i in obj) {
+            out[i] = obj[i];
+        }
+        return out;
+    };
+
+    var memoize = function (fn, mem) {
+        mem = mem || {};
+        return function (k) {
+            return mem[k] ? mem[k] : mem[k] = fn(k);
+        };
+    };
+
+    var toLowerCase = memoize(function (name) {
+        return name.toLowerCase();
+    });
+
+    var toUpperCase = memoize(function (name) {
+        return name.toUpperCase();
+    });
+
+    /** 从给定对象(obj)中获取深层属性值,用点号表述.*/
+
+    var delve = function (obj, key) {
+        var keys = key.split('.');
+        for (var i = 0, len = keys.length; i < len && obj; i++) {
+            obj = obj[keys[i]];
+        }
+        return obj;
+    };
+
+    var toArray = function (obj) {
+        var len = obj.length,
+            arr = new Array(len);
+        while (len--) {
+            arr[len] = obj[len];
+        }
+        return arr;
+    };
+
+    var hook = function (obj, name, a, b, c) {
+        return obj[name] ? obj[name](a, b, c) : void (0);
+    };
+
+    var empty = function (x) {
+        return x == null;
+    };
+
+    var falsey = function (x) {
+        return x === false || x == null;
+    };
+
+    /******************************************/
 
     var EMPTY = {};
     var EMPTY_BASE = '';
-
-    /** 浏览器环境.*/
-    var HAS_DOM = typeof document !== 'undefined';
-    var TEXT_CONTENT = (!HAS_DOM || 'textContent') in document ? 'textContent' : 'nodeValue';
-
-    var ATTR_KEY = typeof Symbol !== 'undefined' ? Symbol('preactattr') : '__preactattr_';
-    var UNDEFINED_ELEMENT = 'undefined';
+    var TEXT_CONTENT = 'textContent' in document ? 'textContent' : 'nodeValue';
+    var ATTR_KEY = typeof global.Symbol !== 'undefined' ? global.Symbol.for('preactattr') : '__preactattr_';
 
     /** DOM属性值仅为数字的属性【没有单位 eg:px】.*/
     var NON_DIMENSION_PROPS = {
@@ -57,102 +114,128 @@
         zoom: 1
     };
 
-    /** 从`props`中拷贝自有属性到`obj`【拷贝引用】.*/
+    var options = {};
+    var optionsHook = function (name, a, b) {
+        return hook(options, name, a, b);
+    };
 
-    function extend(obj, props) {
-        for (var i in props) {
-            if (hasOwnProperty.call(props, i)) {
-                obj[i] = props[i];
+    var setImmediate = (function () {
+        var tickImmediate = global.setImmediate,
+            tickObserver = global.MutationObserver;
+        if (tickImmediate) {
+            return tickImmediate.bind(global);
+        } else if (tickObserver) {
+            var node = document.createTextNode('preact'),
+                queue = [],
+                bool = false,
+                callback = function () {
+                    var n = queue.length;
+                    for (var i = 0; i < n; i++) {
+                        queue[i]();
+                    }
+                    queue = queue.slice(n);
+                };
+
+            new tickObserver(callback).observe(node, { characterData: true });
+
+            return function (fn) {
+                queue.push(fn);
+                bool = !bool;
+                node.data = bool;
+            };
+        } else {
+            return function (fn) {
+                setTimeout(fn, 4);
+            };
+        }
+    })();
+
+    var inDocument = function (node) {
+        while (node) {
+            if (document.documentElement === node) {
+                return true;
             }
+            node = node.parentNode;
         }
-        return obj;
-    }
-
-    /** 快速克隆. 注意: 不会过滤掉非自有属性. */
-
-    function clone(obj) {
-        var out = {};
-        for (var i in obj) {
-            out[i] = obj[i];
-        }
-        return out;
-    }
-
-    /** 对于给定函数创建一个缓存包装.*/
-
-    function memoize(fn, mem) {
-        mem = mem || {};
-        return function(k) {
-            return hasOwnProperty.call(mem, k) ? mem[k] : mem[k] = fn(k);
-        };
-    }
-
-    /** 从给定对象(obj)中获取深层属性值,用点号表述.*/
-
-    function delve(obj, key) {
-        for (var p = key.split('.'), i = 0; i < p.length && obj; i++) {
-            obj = obj[p];
-        }
-        return obj;
-    }
-
-    /** 转换一个类似数组对象到数组中.*/
-
-    function toArray(obj) {
-        var arr = [],
-            i = obj.length;
-        while (i--) {
-            arr[i] = obj[i];
-        }
-        return arr;
-    }
-
-    /** 判断给定对象(obj)是否是function.*/
-    var isFunction = function(obj) {
-        return 'function' === typeof obj;
+        return false;
     };
 
-    /** 判断给定对象(obj)是否是string.*/
-    var isString = function(obj) {
-        return 'string' === typeof obj;
+    var removeNode = function (node) {
+        var p = node.parentNode;
+        if (p) {
+            p.removeChild(node);
+        }
     };
 
-    /** 安全指向内置hasOwnProperty.*/
-    var hasOwnProperty = ({}).hasOwnProperty;
-
-    /** 检查给定值(x)是否为：`null` or `undefined`.*/
-    var empty = function(x) {
-        return x == null;
+    var replaceNode = function (node, newNode) {
+        var p = node.parentNode;
+        if (p) {
+            p.replaceChild(newNode, node);
+        }
+        return node;
     };
 
-    var falsey = function(x) {
-        return x === false || x == null;
+    var createNodeReplace = function (node) {
+        var newNode = document.createElement('div');
+        var p = node.parentNode;
+        if (p) {
+            p.replaceChild(newNode, node);
+        }
+        return newNode;
     };
 
-    /** 把一个表示styles的hashmap转换成CSSText形式的字符串.*/
+    var getNodeType = function (node) {
+        return node.nodeType;
+    };
 
-    function styleObjToCss(s) {
+    var ensureNodeData = function (node) {
+        return node[ATTR_KEY] || (node[ATTR_KEY] = {});
+    };
+
+    var appendChildren = function (parent, children) {
+        var len = children.length,
+            many = len > 2,
+            into = many ? document.createDocumentFragment() : parent;
+
+        for (var i = 0; i < len; i++) {
+            into.appendChild(children[i]);
+        }
+        if (many) {
+            parent.appendChild(into);
+        }
+    };
+
+    /** fontSize -> font-size.*/
+
+    var jsToCss = memoize(function (s) {
+        return toLowerCase(s.replace(/([A-Z])/g, '-$1'));
+    });
+
+    /** {zIndex:100, fontSize:14} -> 'z-index:100; font-size:14px;'.*/
+
+    var styleObjToCss = function (s) {
         var str = '';
         for (var prop in s) {
-            if (hasOwnProperty.call(s, prop)) {
-                var val = s[prop];
-                if (!empty(val)) {
-                    str += jsToCss(prop);
-                    str += ': ';
-                    str += val;
-                    if (typeof val === 'number' && !NON_DIMENSION_PROPS[prop]) {
-                        str += 'px';
-                    }
-                    str += '; ';
+            var val = s[prop];
+            if (!empty(val)) {
+                if (str) {
+                    str += ' ';
+                }
+                str += (jsToCss(prop) + ':' + val);
+                if (typeof val === 'number' && !NON_DIMENSION_PROPS[prop]) {
+                    str += 'px;';
+                } else {
+                    str += ';';
                 }
             }
+
         }
         return str;
-    }
+    };
 
-    /** 把一个表示classes的hashmap转换成className形式的字符串.*/
+    /** {class1:true, class2:false, class3:1} -> 'class1 class3'.*/
 
-    function hashToClassName(c) {
+    var hashToClassName = function (c) {
         var str = '';
         for (var prop in c) {
             if (c[prop]) {
@@ -163,154 +246,194 @@
             }
         }
         return str;
-    }
-
-    /** 把一个(JavaScript使用的)驼峰形式CSS属性名转换成CSS属性名称.*/
-    var jsToCss = memoize(function(s) {
-        return s.replace(/([A-Z])/g, '-$1').toLowerCase();
-    });
-
-    /** 缓存String.prototype.toLowerCase方法.*/
-    var toLowerCase = memoize(function(s) {
-        return s.toLowerCase();
-    });
-
-    // For animations, rAF is vastly superior. However, it scores poorly on benchmarks :(
-    var ch = false;
-    try {
-        ch = new MessageChannel();
-    } catch(e) {
-    }
-
-    /** 尽可能快的异步调用方法f.*/
-    var setImmediate = ch ? (function(f) {
-        ch.port1.onmessage = f;
-        ch.port2.postMessage('');
-    }) : setTimeout;
-
-    var inDocument = function(node) {
-        while (node && node !== document) {
-            node = node.parentNode;
-        }
-        return (node === document) ? true : false;
-    };
-    var removeNode = function(node) {
-        var p = node.parentNode;
-        if (p) {
-            p.removeChild(node);
-        }
     };
 
-    var options = {
-        /** 如果`TRUE`，`prop`变化将同步触发组件更新.*/
-        syncComponentUpdates: false,
+    /** 把style和class属性对应的object转成字符串, 使用上面两个方法.*/
 
-        /** 处理所有新创建的VNodes.*/
-        vnode: function(n) {
-            var attrs = n.attributes;
-            if (!attrs || isFunction(n.nodeName)) {
-                return;
-            }
-
-            /** 把属性名className转成class.*/
-            var p = attrs.className;
-            if (p) {
-                attrs['class'] = p;
-                delete attrs.className;
-            }
-            if (attrs['class']) {
-                normalize(attrs, 'class', hashToClassName);
-            }
-            if (attrs.style) {
-                normalize(attrs, 'style', styleObjToCss);
-            }
-        }
-    };
-
-    function normalize(obj, prop, fn) {
+    var normalize = function (obj, prop, fn) {
         var v = obj[prop];
         if (v && !isString(v)) {
             obj[prop] = fn(v);
         }
-    }
+    };
 
-    /** 调用`options`中定义的钩子函数name.*/
-
-    function optionsHook(name, a, b) {
-        return hook(options, name, a, b);
-    }
-
-    /** 调用给定对象(obj)中定义的钩子函数name.*/
-
-    function hook(obj, name, a, b, c) {
-        var fn = obj[name];
-        if (isFunction(fn)) {
-            return obj[name](a, b, c);
+    var getAccessor = function (node, name) {
+        if (name === 'class') {
+            return node.className;
+        } else if (name === 'style') {
+            return node.style.cssText;
+        } else if (name !== 'type' && name in node) {
+            return node[name];
+        } else {
+            var attrs = node[ATTR_KEY];
+            return (attrs && hasOwnProperty(attrs, name)) ? attrs[name] : void (0);
         }
-        return void(0);
+    };
+
+    var normalizeEventName = memoize(function (t) {
+        return toLowerCase(t.replace(/^on/i, ''));
+    });
+
+    var eventProxy = function (event) {
+        var fn = this._listeners[normalizeEventName(event.type)];
+
+        return fn ? fn.call(this, optionsHook('event', event) || event) : void (0);
+    };
+
+    var setComplexAccessor = function (node, name, value) {
+        if (name.substring(0, 2) === 'on') {
+            var _type = normalizeEventName(name),
+                l = node._listeners || (node._listeners = {}),
+                fn = value ? 'add' : 'remove';
+
+            node[fn + 'EventListener'](_type, eventProxy);
+            l[_type] = value;
+        } else {
+            var type = typeof value;
+
+            if (falsey(value)) {
+                node.removeAttribute(name);
+            } else if (isSimple(type)) {
+                node.setAttribute(name, value);
+            }
+        }
+    };
+
+    var setAccessor = function (node, name, value) {
+        if (name === 'class') {
+            node.className = value || '';
+        } else if (name === 'style') {
+            node.style.cssText = value || '';
+        } else if (name === 'dangerouslySetInnerHTML') {
+            if (value && value.__html) {
+                node.innerHTML = value.__html;
+            }
+        } else if (name === 'key' || (name !== 'type' && name in node)) {
+            node[name] = value;
+            if (falsey(value)) {
+                node.removeAttribute(name);
+            }
+        } else {
+            setComplexAccessor(node, name, value);
+        }
+
+        ensureNodeData(node)[name] = value;
+    };
+
+    var getAttributesAsObject = function (list) {
+        var attrs = {},
+            len = list.length;
+        while (len--) {
+            var item = list[len];
+            attrs[item.name] = item.value;
+        }
+        return attrs;
+    };
+
+    var getRawNodeAttributes = function (node) {
+        var list = node.attributes;
+        return (list && list.getNamedItem) ? getAttributesAsObject(list) : list;
+    };
+
+    var getNodeAttributes = function (node) {
+        return node[ATTR_KEY] ? node[ATTR_KEY] : (node[ATTR_KEY] = getRawNodeAttributes(node));
+    };
+
+    /******************************************/
+
+    function VNode(nodeName, attributes, children) {
+        this.nodeName = nodeName;
+        this.attributes = attributes;
+        this.children = children;
     }
+
+    extend(options, {
+        /** 如果`TRUE`，`prop`变化将同步触发组件更新.*/
+        syncComponentUpdates: false,
+
+        /** 处理所有新创建的VNode.*/
+        vnode: function (n) {
+            var attrs = n.attributes;
+            if (!isFunction(n.nodeName) && attrs) {
+                var p = attrs.className;
+                if (p) {
+                    attrs['class'] = p;
+                    delete attrs.className;
+                }
+                if (attrs['class']) {
+                    normalize(attrs, 'class', hashToClassName);
+                }
+                if (attrs.style) {
+                    normalize(attrs, 'style', styleObjToCss);
+                }
+            }
+        }
+    });
+
+
+    var NO_RENDER = {
+        render: false
+    };
+    var SYNC_RENDER = {
+        renderSync: true
+    };
 
     var SHARED_TEMP_ARRAY = [];
-
     function h(nodeName, attributes) {
         var len = arguments.length,
             lastSimple = false,
-            children,
+            children = [],
             arr;
 
-        if (len > 2) {
-            children = [];
-            for (var i = 2; i < len; i++) {
-                var _p = arguments[i];
-                if (falsey(_p)) {
-                    continue;
-                }
+        if (attributes) {
+            delete attributes.children;
+        } else {
+            attributes = void (0);
+        }
+
+        for (var i = 2; i < len; i++) {
+            var _p = arguments[i];
+            if (!falsey(_p)) {
                 if (_p.join) {
                     arr = _p;
                 } else {
                     arr = SHARED_TEMP_ARRAY;
                     arr[0] = _p;
                 }
+
                 for (var j = 0; j < arr.length; j++) {
-                    if (falsey(arr[j])) {
-                        continue;
+                    var child = arr[j];
+                    if (!falsey(child)) {
+                        var simple = isSimple(child);
+                        if (simple) {
+                            child = String(child);
+                        }
+                        if (simple && lastSimple) {
+                            children[children.length - 1] += child;
+                        } else {
+                            children.push(child);
+                        }
+                        lastSimple = simple;
                     }
-
-                    var child = arr[j],
-                        simple = (typeof child !== 'object' && typeof child !== 'function');
-
-                    if (simple) {
-                        child = String(child);
-                    }
-                    if (simple && lastSimple) {
-                        children[children.length - 1] += child;
-                    } else {
-                        children.push(child);
-                    }
-                    lastSimple = simple;
                 }
             }
         }
 
-        if (attributes && attributes.children) {
-            delete attributes.children;
-        }
-
-        var p = new VNode(nodeName, attributes || void(0), children || void(0));
+        var p = new VNode(nodeName, attributes, children.length ? children : void (0));
         optionsHook('vnode', p);
         return p;
     }
 
     function createLinkedState(component, key, eventPath) {
         var path = key.split('.'),
-            p0 = path[0],
-            len = path.length;
+            len = path.length,
+            p0 = path[0];
 
-        return function(event) {
+        return function (event) {
             var _component$setState = {},
-                node = this,
                 state = component.state,
                 stateRef = state,
+                node = this,
                 value;
 
             if (isString(eventPath)) {
@@ -321,6 +444,7 @@
             } else {
                 value = (node.nodeName + node.type).match(/^input(checkbox|radio)$/i) ? node.checked : node.value;
             }
+
             if (isFunction(value)) {
                 value = value.call(node);
             }
@@ -338,160 +462,16 @@
         };
     }
 
-    function isFunctionalComponent(vnode) {
-        var nodeName = vnode.nodeName;
-        return isFunction(nodeName) && !nodeName.prototype.render;
-    }
-
-    function buildFunctionalComponent(vnode, context) {
-        return vnode.nodeName(getNodeProps(vnode), context || EMPTY) || EMPTY_BASE;
-    }
-
-    function ensureNodeData(node) {
-        return node[ATTR_KEY] || (node[ATTR_KEY] = {});
-    }
-
-    function getNodeType(node) {
-        return node.nodeType;
-    }
-
-    function appendChildren(parent, children) {
-        var len = children.length,
-            many = len > 2,
-            into = many ? document.createDocumentFragment() : parent;
-        for (var i = 0; i < len; i++) {
-            into.appendChild(children[i]);
-        }
-        if (many) {
-            parent.appendChild(into);
-        }
-    }
-
-    /** 检索一个已渲染节点的属性值*/
-
-    function getAccessor(node, name, value, cache) {
-        if (name === 'class') {
-            return node.className;
-        }
-        if (name === 'style') {
-            return node.style.cssText;
-        }
-
-        if (name !== 'type' && name in node) {
-            return node[name];
-        }
-        var attrs = node[ATTR_KEY];
-        if (cache !== false && attrs && hasOwnProperty.call(attrs, name)) {
-            return attrs[name];
-        }
-
-        return value;
-    }
-
-    function setAccessor(node, name, value) {
-        if (name === 'class') {
-            node.className = value || '';
-        } else if (name === 'style') {
-            node.style.cssText = value || '';
-        } else if (name === 'dangerouslySetInnerHTML') {
-            if (value && value.__html) {
-                node.innerHTML = value.__html;
-            }
-        } else if (name === 'key' || (name in node && name !== 'type')) {
-            node[name] = value;
-            if (falsey(value)) {
-                node.removeAttribute(name);
-            }
-        } else {
-            setComplexAccessor(node, name, value);
-        }
-
-        ensureNodeData(node)[name] = value;
-    }
-
-    function setComplexAccessor(node, name, value) {
-        if (name.substring(0, 2) === 'on') {
-            var _type = normalizeEventName(name),
-                l = node._listeners || (node._listeners = {}),
-                fn = !l[_type] ? 'add' :
-                    !value ? 'remove' : null;
-
-            if (fn) {
-                node[fn + 'EventListener'](_type, eventProxy);
-            }
-
-            l[_type] = value;
-        } else {
-            var type = typeof value;
-            if (falsey(value)) {
-                node.removeAttribute(name);
-            } else if (type !== 'function' && type !== 'object') {
-                node.setAttribute(name, value);
-            }
-        }
-    }
-
-    /** 一个已代理钩子的事件处理程序的回调*/
-
-    function eventProxy(event) {
-        var fn = this._listeners[normalizeEventName(event.type)];
-        if (fn) {
-            return fn.call(this, optionsHook('event', event) || event);
-        }
-        return void(0);
-    }
-
-    var normalizeEventName = memoize(function(t) {
-        return t.replace(/^on/i, '').toLowerCase();
-    });
-
-    function getNodeAttributes(node) {
-        return node[ATTR_KEY] || getRawNodeAttributes(node) || EMPTY;
-    }
-
-    function getRawNodeAttributes(node) {
-        var list = node.attributes;
-        if (!list || !list.getNamedItem) {
-            return list;
-        }
-
-        return getAttributesAsObject(list);
-    }
-
-    function getAttributesAsObject(list) {
-        var attrs = {};
-        for (var i = list.length; i--;) {
-            var item = list[i];
-            attrs[item.name] = item.value;
-        }
-        return attrs;
-    }
-
-    function isSameNodeType(node, vnode) {
-        if (isFunctionalComponent(vnode)) {
-            return true;
-        }
-        var nodeName = vnode.nodeName;
-        if (isFunction(nodeName)) {
-            return node._componentConstructor === nodeName;
-        }
-        if (getNodeType(node) === 3) {
-            return isString(vnode);
-        }
-        return toLowerCase(node.nodeName) === nodeName;
-    }
-
     function getNodeProps(vnode) {
         var props = clone(vnode.attributes),
             c = vnode.children;
-
         if (c) {
             props.children = c;
         }
         var defaultProps = vnode.nodeName.defaultProps;
         if (defaultProps) {
             for (var i in defaultProps) {
-                if (hasOwnProperty.call(defaultProps, i) && !(i in props)) {
+                if (!(i in props)) {
                     props[i] = defaultProps[i];
                 }
             }
@@ -500,214 +480,148 @@
         return props;
     }
 
-    /** DOM节点缓存池,以nodeName.toUpperCase()为键*/
-    var nodes = {};
+    function isFunctionalComponent(vnode) {
+        var nodeName = vnode.nodeName;
+        return isFunction(nodeName) && !nodeName.prototype.render;
+    }
 
-    var normalizeName = memoize(function(name) {
-        return name.toUpperCase();
-    });
+    function isComponent(vnode) {
+        var nodeName = vnode.nodeName;
+        return isFunction(nodeName) && isFunction(nodeName.prototype.render);
+    }
+
+    function buildFunctionalComponent(vnode, context) {
+        return vnode.nodeName(getNodeProps(vnode), context || EMPTY) || EMPTY_BASE;
+    }
+
+    function isSameNodeType(node, vnode) {
+        var nodeName = vnode.nodeName;
+
+        if (isFunctionalComponent(vnode)) {
+            return true;
+        } else if (isFunction(nodeName)) {
+            return nodeName === node._componentConstructor;
+        } else if (isString(nodeName)) {
+            return nodeName === toLowerCase(node.nodeName);
+        } else {
+            return 3 === getNodeType(node);
+        }
+    }
+
+    /** DOM节点缓存池,以nodeName.toUpperCase()为键*/
+
+    var nodes_cache = {};
+
+    function cleanNode(node) {
+        removeNode(node);
+        if (getNodeType(node) === 1) {
+            getNodeAttributes(node);
+            node._component = node._componentConstructor = null;
+        }
+    }
 
     function collectNode(node) {
         cleanNode(node);
-        var name = normalizeName(node.nodeName),
-            list = nodes[name];
+        var name = toUpperCase(node.nodeName),
+            list = nodes_cache[name];
 
         if (list) {
             list.push(node);
         } else {
-            nodes[name] = [node];
+            nodes_cache[name] = [node];
         }
     }
 
     function createNode(nodeName) {
-        var name = normalizeName(nodeName),
-            list = nodes[name],
+        var name = toUpperCase(nodeName),
+            list = nodes_cache[name],
             node = list && list.pop() || document.createElement(nodeName);
 
         ensureNodeData(node);
         return node;
     }
 
-    function cleanNode(node) {
-        removeNode(node);
-        if (getNodeType(node) === 3) {
-            return;
-        }
-        if (!node[ATTR_KEY]) {
-            node[ATTR_KEY] = getRawNodeAttributes(node);
-        }
+    /** 组件DOM节点缓存池*/
 
-        node._component = node._componentConstructor = null;
-    }
+    var components_cache = {};
 
-    function diff(dom, vnode, context) {
-        var originalAttributes = vnode.attributes;
-
-        while (isFunctionalComponent(vnode)) {
-            vnode = buildFunctionalComponent(vnode, context);
-        }
-
-        if (isFunction(vnode.nodeName)) {
-            return buildComponentFromVNode(dom, vnode, context);
-        } else if (isString(vnode)) {
-            if (dom) {
-                var type = getNodeType(dom);
-                if (type === 3) {
-                    dom[TEXT_CONTENT] = vnode;
-                    return dom;
-                } else if (type === 1) {
-                    collectNode(dom);
-                }
-            }
-            return document.createTextNode(vnode);
+    function collectComponent(component) {
+        var name = component.constructor.name,
+            list = components_cache[name];
+        if (list) {
+            list.push(component);
         } else {
-            var out = dom,
-                nodeName = vnode.nodeName || UNDEFINED_ELEMENT;
-
-            if (!dom) {
-                out = createNode(nodeName);
-            } else if (toLowerCase(dom.nodeName) !== nodeName) {
-                out = createNode(nodeName);
-                appendChildren(out, toArray(dom.childNodes)); //?dont understand! need this line?
-                recollectNodeTree(dom);
-            }
-
-            innerDiffNode(out, vnode, context);
-            diffAttributes(out, vnode);
-
-            if (originalAttributes && originalAttributes.ref) {
-                (out[ATTR_KEY].ref = originalAttributes.ref)(out);
-            }
-            return out;
+            components_cache[name] = [component];
         }
     }
 
-    /** Apply child and attribute changes between a VNode and a DOM Node to the DOM. */
-
-    function innerDiffNode(dom, vnode, context) {
-        var len = dom.childNodes.length,
-            childrenLen = 0,
-            keyedLen = 0,
-            children,
-            keyed,
-            key;
-
-        if (len) {
-            children = [];
-            for (var idx = 0; idx < len; idx++) {
-                var child = dom.childNodes[idx],
-                    props = child._component && child._component.props;
-
-                key = props ? props.key : getAccessor(child, 'key');
-                if (!empty(key)) {
-                    if (!keyed) {
-                        keyed = {};
-                    }
-                    keyed[key] = child;
-                    keyedLen++;
-                } else {
-                    children[childrenLen++] = child;
-                }
+    function createComponent(ctor, props, context) {
+        var list = components_cache[ctor.name],
+            len = list && list.length,
+            component;
+        for (var i = 0; i < len; i++) {
+            component = list[i];
+            if (component.constructor === ctor) {
+                list.splice(i, 1);
+                var inst = new ctor(props, context);
+                inst.base = component.base;
+                return inst;
             }
         }
-
-        var vchildren = vnode.children,
-            vlen = vchildren && vchildren.length;
-
-        if (vlen) {
-            for (var i = 0; i < vlen; i++) {
-                var vchild = vchildren[i],
-                    child2 = void(0);
-
-                // attempt to find a node based on key matching
-                if (keyedLen) {
-                    var attrs = vchild.attributes;
-                    key = attrs && attrs.key;
-                    if (!empty(key) && hasOwnProperty.call(keyed, key)) {
-                        child2 = keyed[key];
-                        delete keyed[key];
-                        keyedLen--;
-                    }
-                }
-
-                // attempt to pluck a node of the same type from the existing children
-                if (!child2 && childrenLen) {
-                    for (var j = 0; j < childrenLen; j++) {
-                        if (isSameNodeType(children[j], vchild)) {
-                            child2 = children[j];
-                            children.splice(j, 1);
-                            childrenLen--;
-                            break;
-                        }
-                    }
-                }
-
-                // morph the matched/found/created DOM child to match vchild (deep)
-                child2 = diff(child2, vchild, context);
-
-                if (dom.childNodes[i] !== child2) {
-                    var next = dom.childNodes[i + 1];
-
-                    if (next) {
-                        dom.insertBefore(child2, next);
-                    } else {
-                        dom.appendChild(child2);
-                    }
-                }
-            }
-        }
-
-        if (keyedLen) {
-            for (key in keyed) {
-                if (hasOwnProperty.call(keyed, key)) {
-                    children[childrenLen++] = keyed[key];
-                }
-            }
-        }
-
-        // 移除游离的子节点
-        if (childrenLen) {
-            removeOrphanedChildren(children);
-        }
+        return new ctor(props, context);
     }
 
-    /** 回收节点列表.unmountOnly：是否是组件回收周期*/
-
-    function removeOrphanedChildren(children, unmountOnly) {
+    function removeOrphanedChildren(children) {
         for (var i = children.length; i--;) {
             var child = children[i];
             if (child) {
-                recollectNodeTree(child, unmountOnly);
+                recollectNodeTree(child);
             }
         }
     }
 
-    /** 回收整个node节点树.unmountOnly：是否是组件回收周期 */
-
-    function recollectNodeTree(node, unmountOnly) {
+    function recollectNodeTree(node) {
         var attrs = node[ATTR_KEY];
         if (attrs) {
             hook(attrs, 'ref', null);
         }
 
         var component = node._component;
-        if (component) { //遇到组件节点则调用unmountComponent。（remove = 组件回收周期?false:true） => !unmountOnly
-            unmountComponent(component, !unmountOnly);
+        if (component) {
+            unmountComponent(component);
         } else {
-            if (!unmountOnly) { //非组件回收周期需要回收节点
-                if (getNodeType(node) !== 1) {
-                    removeNode(node);
-                    return;
-                }
+            if (getNodeType(node) !== 1) {
+                removeNode(node);
+            } else {
                 collectNode(node);
-            }
 
-            var c = node.childNodes;
-            if (c && c.length) {
-                removeOrphanedChildren(c, unmountOnly);
+                var childs = node.childNodes;
+                if (childs && childs.length) {
+                    removeOrphanedChildren(childs);
+                }
             }
         }
     }
+
+    function fixComponentBase(parent, dom) {
+        if (parent.base) {
+            replaceChild(parent.base, dom);
+            recollectNodeTree(dom);
+        } else {
+            parent.base = dom;
+        }
+    }
+
+    function swapComponentBase(parent, son) {
+        if (son.base) {
+            replaceChild(son.base, parent.base);
+            recollectNodeTree(parent.base);
+        } else {
+            son.base = parent.base;
+        }
+    }
+
+    /** 通过vNode来更新节点node的属性. */
 
     function diffAttributes(dom, vnode) {
         var old = getNodeAttributes(dom) || EMPTY,
@@ -717,7 +631,7 @@
 
         // 移除
         for (name in old) {
-            if (empty(attrs[name])) {
+            if (!hasOwnProperty(attrs, name) && !empty(old[name])) {
                 setAccessor(dom, name, null);
             }
         }
@@ -725,90 +639,44 @@
         // 新增 或 更新
         if (attrs !== EMPTY) {
             for (name in attrs) {
-                if (hasOwnProperty.call(attrs, name)) {
-                    value = attrs[name];
-                    if (!empty(value) && value != getAccessor(dom, name)) {
-                        setAccessor(dom, name, value);
-                    }
+                value = attrs[name];
+                if (!empty(value) && value != getAccessor(dom, name)) {
+                    setAccessor(dom, name, value);
                 }
             }
         }
     }
 
-    var components = {};
 
-    function collectComponent(component) {
-        var name = component.constructor.name,
-            list = components[name];
-        if (list) {
-            list.push(component);
+    /** 移除自定义组件.*/
+
+    function unmountComponent(component, isRecursive) {
+        hook(component, '__ref', null);
+        hook(component, 'componentWillUnmount');
+
+        if (!isRecursive) {
+            component._parentComponent = null;
+            collectComponent(component);
+        }
+        var inner = component._component;
+        if (inner) {
+            component.base = null;
+            unmountComponent(inner, true);
         } else {
-            components[name] = [component];
+            var base = component.base;
+            removeNode(base);
+            removeOrphanedChildren(base.childNodes);
         }
+
+        hook(component, 'componentDidUnmount');
+        component._isMounted = true;
     }
 
-    function createComponent(ctor, props, context) {
-        var list = components[ctor.name],
-            len = list && list.length,
-            c;
-        for (var i = 0; i < len; i++) {
-            c = list[i];
-            if (c.constructor === ctor) {
-                list.splice(i, 1);
-                return c;
-            }
-        }
-        return new ctor(props, context);
-    }
-
-    /** Set a component's `props` (generally derived from JSX attributes).
-	*	@param {Object} props
-	*	@param {Object} [opts]
-	*	@param {boolean} [opts.renderSync=false]	If `true` and {@link options.syncComponentUpdates} is `true`, triggers synchronous rendering.
-	*	@param {boolean} [opts.render=true]			If `false`, no render will be triggered.
-	*/
-
-    function setComponentProps(component, props, opts, context) {
-        var d = component._disableRendering;
-
-        component._ref = props.ref;
-        delete props.ref;
-        delete props.key;
-
-        component._disableRendering = true;
-
-        if (context) {
-            if (!component.prevContext) {
-                component.prevContext = component.context;
-            }
-            component.context = context;
-        }
-
-        if (component.base) {
-            hook(component, 'componentWillReceiveProps', props, component.context);
-        }
-
-        if (!component.prevProps) {
-            component.prevProps = component.props;
-        }
-        component.props = props;
-
-        component._disableRendering = d;
-
-        if (!opts || opts.render !== false) {
-            if ((opts && opts.renderSync) || options.syncComponentUpdates !== false) {
-                renderComponent(component);
-            } else {
-                triggerComponentRender(component);
-            }
-        }
-
-        hook(component, '_ref', component);
-    }
+    /** 渲染自定义组件.*/
 
     function renderComponent(component) {
         if (component._disableRendering) {
-            return void(0);
+            return void (0);
         }
 
         var rendered,
@@ -819,7 +687,7 @@
             previousProps = component.prevProps || props,
             previousState = component.prevState || state,
             previousContext = component.prevContext || context,
-            isUpdate = inDocument(component.base);
+            isUpdate = component._isMounted;
 
         if (isUpdate) {
             component.props = previousProps;
@@ -844,66 +712,49 @@
             rendered = hook(component, 'render', props, state, context);
 
             var childComponent = rendered && rendered.nodeName,
-                childContext = component.getChildContext ? component.getChildContext() : context, // @TODO might want to clone() new context obj
-                toUnmount,
+                childContext = component.getChildContext ? component.getChildContext() : context,
+                cbase = component.base,
+                inst,
                 base;
 
-            if (isFunction(childComponent) && childComponent.prototype.render) {
+            if (isComponent(rendered)) {
                 // 建立高阶组件链接
 
-                var inst = component._component;
-                toUnmount = inst;
-                if (toUnmount && toUnmount.constructor !== childComponent) {
-                    unmountComponent(toUnmount, true);
+                inst = component._component;
+                if (inst && inst.constructor !== childComponent) {
+                    unmountComponent(inst);
                     inst = null;
                 }
 
                 var childProps = getNodeProps(rendered);
 
                 if (inst) {
+                    swapComponentBase(component, inst);
                     setComponentProps(inst, childProps, SYNC_RENDER, childContext);
                 } else {
                     inst = createComponent(childComponent, childProps, childContext);
                     inst._parentComponent = component;
+                    swapComponentBase(component, inst);
                     component._component = inst;
-
                     setComponentProps(inst, childProps, NO_RENDER, childContext);
                     renderComponent(inst);
                 }
 
                 base = inst.base;
             } else {
-                var cbase = component.base;
-
                 // 销毁高阶组件链接
-                toUnmount = component._component;
-                if (toUnmount) {
-                    unmountComponent(toUnmount, true);
-                    cbase = component._component = null;
+                inst = component._component;
+                if (inst) {
+                    cbase = createNodeReplace(cbase);
+                    unmountComponent(inst);
+                    component._component = null;
                 }
-
                 base = diff(cbase, (rendered || EMPTY_BASE), childContext);
-            }
-
-            if (component.base && base !== component.base) {
-                var p = component.base.parentNode;
-                if (p) {
-                    p.replaceChild(base, component.base);
-                }
+                base._component = component;
+                base._componentConstructor = component.constructor;
             }
 
             component.base = base;
-
-            if (base) {
-                var componentRef = component,
-                    t = component;
-
-                while (t = t._parentComponent) {
-                    componentRef = t;
-                }
-                base._component = componentRef;
-                base._componentConstructor = componentRef.constructor;
-            }
 
             if (isUpdate) {
                 hook(component, 'componentDidUpdate', previousProps, previousState, previousContext);
@@ -921,35 +772,31 @@
                 fn.call(component);
             }
         }
-        return rendered;
     }
 
     var items = [],
         itemsOffline = [];
 
     function rerender() {
-        if (!items.length) {
-            return;
-        }
+        if (items.length) {
+            var currentItems = items,
+                p;
 
-        var currentItems = items,
-            p;
-
-        // 交互 online 和 offline
-        items = itemsOffline;
-        itemsOffline = currentItems;
-        while (p = itemsOffline.pop()) {
-            if (p._dirty) {
-                renderComponent(p);
+            // 交互 online 和 offline
+            items = itemsOffline;
+            itemsOffline = currentItems;
+            while (p = itemsOffline.pop()) {
+                if (p._dirty) {
+                    renderComponent(p);
+                }
             }
         }
     }
 
     function enqueueRender(component) {
-        if (items.push(component) !== 1) {
-            return;
+        if (items.push(component) === 1) {
+            (options.debounceRendering || setImmediate)(rerender);
         }
-        (options.debounceRendering || setImmediate)(rerender);
     }
 
     /**标记component为dirty,加入队列等待渲染.*/
@@ -961,40 +808,57 @@
         }
     }
 
-    function buildComponentFromVNode(dom, vnode, context) {
-        var c = dom && dom._component,
-            isOwner = c && (dom._componentConstructor === vnode.nodeName),
-            oldDom = dom;
 
-        while (c && !isOwner && (c = c._parentComponent)) {
-            isOwner = (c.constructor === vnode.nodeName);
+    /** [opts.renderSync=false]	[opts.render=true].*/
+
+    function setComponentProps(component, props, opts, context) {
+        var d = component._disableRendering;
+
+        component.__ref = props.ref;
+        component.__key = props.key;
+
+        delete props.ref;
+        delete props.key;
+
+        component._disableRendering = true;
+
+        if (context) {
+            if (!component.prevContext) {
+                component.prevContext = component.context;
+            }
+            component.context = context;
         }
 
-        if (isOwner) {
-            setComponentProps(c, getNodeProps(vnode), SYNC_RENDER, context);
-            dom = c.base;
-        } else {
-            if (c) {
-                unmountComponent(c, true);
-                oldDom = null;
-            }
-            dom = createComponentFromVNode(oldDom, vnode, context);
-            if (oldDom && dom !== oldDom) {
-                recollectNodeTree(oldDom);
+        if (component.base) {
+            hook(component, 'componentWillReceiveProps', props, component.context);
+        }
+
+        if (!component.prevProps) {
+            component.prevProps = component.props;
+        }
+
+        component.props = props;
+        component._disableRendering = d;
+
+        if (!opts || opts.render) {
+            if ((opts && opts.renderSync) || options.syncComponentUpdates) {
+                renderComponent(component);
+            } else {
+                triggerComponentRender(component);
             }
         }
-        return dom;
+
+        hook(component, '__ref', component);
     }
+
 
     /** 实例化和渲染一个Component, VNode的nodeName是一个构造函数【继承自Component】.*/
 
     function createComponentFromVNode(dom, vnode, context) {
-        var props = getNodeProps(vnode);
-        var component = createComponent(vnode.nodeName, props, context);
+        var props = getNodeProps(vnode),
+            component = createComponent(vnode.nodeName, props, context);
 
-        if (dom && !component.base) {
-            component.base = dom;
-        }
+        fixComponentBase(component, dom)
 
         setComponentProps(component, props, NO_RENDER, context);
         renderComponent(component);
@@ -1002,135 +866,238 @@
         return component.base;
     }
 
-    /** 从DOM中移除一个component并且回收它.当为顶级组件时remove为true*/
+    /** 构建组件. */
 
-    function unmountComponent(component, remove) {
-        hook(component, '_ref', null);
-        hook(component, 'componentWillUnmount');
+    function buildComponentFromVNode(dom, vnode, context) {
+        var c = dom && dom._component,
+            isOwner = c && (dom._componentConstructor === vnode.nodeName),
+            out;
 
-        var inner = component._component;
-        var base = component.base;
+        while (c && !isOwner && (c = c._parentComponent)) {
+            isOwner = (c.constructor === vnode.nodeName);
+        }
 
-        if (inner) {
-            unmountComponent(inner); //the leaf of "high order component link" that will execute "else"
+        if (isOwner) {
+            setComponentProps(c, getNodeProps(vnode), SYNC_RENDER, context);
+            out = c.base;
         } else {
-            base && removeOrphanedChildren(base.childNodes, true);
+            if (c) {
+                dom = createNodeReplace(dom);
+                unmountComponent(c);
+            }
+            out = createComponentFromVNode(dom, vnode, context);
         }
-
-        if (remove) {
-            component._parentComponent = null;
-            collectComponent(component);
-            base && removeNode(base);
-        }
-
-        hook(component, 'componentDidUnmount');
-        component._isMounted = true;
+        return out;
     }
+
+
+    function innerDiffNode(dom, vnode, context) {
+        var len = dom.childNodes.length,
+            childrenLen = 0,
+            keyedLen = 0,
+            children = [],
+            keyed = {},
+            key;
+
+        if (len) {
+            for (var idx = 0; idx < len; idx++) {
+                var child = dom.childNodes[idx];
+                key = child._component ? child._component.__key : getAccessor(child, 'key');
+
+                if (!empty(key)) {
+                    keyed[key] = child;
+                    keyedLen++;
+                } else {
+                    children[childrenLen++] = child;
+                }
+            }
+        }
+
+        var vchildren = vnode.children,
+            vlen = vchildren && vchildren.length;
+
+        if (vlen) {
+            for (var i = 0; i < vlen; i++) {
+                var vchild = vchildren[i],
+                    child2 = void (0);
+
+                if (keyedLen) {
+                    var attrs = vchild.attributes;
+                    key = attrs && attrs.key;
+                    if (!empty(key) && hasOwnProperty(keyed, key)) {
+                        child2 = keyed[key];
+                        delete keyed[key];
+                        keyedLen--;
+                    }
+                }
+
+                if (!child2 && childrenLen) {
+                    for (var j = 0; j < childrenLen; j++) {
+                        if (isSameNodeType(children[j], vchild)) {
+                            child2 = children[j];
+                            children.splice(j, 1);
+                            childrenLen--;
+                            break;
+                        }
+                    }
+                }
+
+                if (!child2) {
+                    child2 = document.createElement(isString(vchild.nodeName) ? vchild.nodeName : 'div');
+                    dom.insertBefore(child2, dom.childNodes[i] || null)
+                }
+
+                child2 = diff(child2, vchild, context);
+
+                if (dom.childNodes[i] !== child2) {
+                    dom.insertBefore(child2, dom.childNodes[i] || null);
+                }
+            }
+        }
+
+        if (keyedLen) {
+            for (key in keyed) {
+                children[childrenLen++] = keyed[key];
+            }
+        }
+
+        // 移除游离的子节点
+        if (childrenLen) {
+            removeOrphanedChildren(children);
+        }
+    }
+
+    function diff(dom, vnode, context) {
+        var originalAttributes = vnode.attributes,
+            out = dom;
+
+        while (isFunctionalComponent(vnode)) {
+            vnode = buildFunctionalComponent(vnode, context);
+        }
+
+        if (isFunction(vnode.nodeName)) {
+            out = buildComponentFromVNode(dom, vnode, context);
+        } else if (isString(vnode)) {
+            var type = getNodeType(dom);
+            if (type === 3) {
+                dom[TEXT_CONTENT] = vnode;
+                out = dom;
+            } else if (type === 1) {
+                out = document.createTextNode(vnode);
+                replaceNode(dom, out);
+                recollectNodeTree(dom);
+            }
+        } else {
+            var nodeName = vnode.nodeName || 'undefined';
+
+            if (toLowerCase(dom.nodeName) !== nodeName) {
+                out = createNode(nodeName);
+                appendChildren(out, toArray(dom.childNodes));
+                replaceNode(dom, out)
+                recollectNodeTree(dom);
+            }
+
+            innerDiffNode(out, vnode, context);
+            diffAttributes(out, vnode);
+
+            if (originalAttributes && originalAttributes.ref) {
+                (out[ATTR_KEY].ref = originalAttributes.ref)(out);
+            }
+        }
+        return out;
+    }
+
+
+    /** 组件基类,createClass返回的的构造函数内自动调用.*/
 
     function Component(props, context) {
         this._dirty = this._disableRendering = this._isMounted = false;
-        this._linkedStates = {};
-        this._renderCallbacks = [];
-        this._parentComponent = this._component = this._ref = null;
+        this._parentComponent = this._component = this.__ref = this.__key = null;
         this.prevState = this.prevProps = this.prevContext = this.base = null;
+
+        this._renderCallbacks = [];
+        this._linkedStates = {};
         this.context = context || {};
         this.props = props || {};
         this.state = hook(this, 'getInitialState') || {};
     }
 
-    extend(Component.prototype, {
-        shouldComponentUpdate: function(props, state, context) {
-            return true;
-        },
-        linkState: function(key, eventPath) {
-            var c = this._linkedStates,
-                cacheKey = key + '|' + (eventPath || '');
+    Component.prototype.shouldComponentUpdate = function (props, state, context) {
+        console.log(context);
+        return true;
+    };
+    Component.prototype.linkState = function (key, eventPath) {
+        var c = this._linkedStates,
+            cacheKey = key + '|' + (eventPath || '');
 
-            return c[cacheKey] || (c[cacheKey] = createLinkedState(this, key, eventPath));
-        },
-        setState: function(state, callback, isReplace) {
-            if (typeof callback === 'boolean') {
-                isReplace = callback;
-                callback = null;
-            }
-            if (!this.prevState) {
-                this.prevState = clone(this.state);
-            }
-            if (callback) {
-                this._renderCallbacks.push(callback);
-            }
-
-            state = isFunction(state) ? state(this.state, this.props) : state;
-
-            if (isReplace) {
-                this.state = state;
-            } else {
-                extend(this.state, state);
-            }
-
-            triggerComponentRender(this);
-        },
-        setProps: function(props, callback, isReplace) {
-            if (typeof callback === 'boolean') {
-                isReplace = callback;
-                callback = null;
-            }
-            if (!this.prevProps) {
-                this.prevProps = clone(this.props);
-            }
-            if (callback) {
-                this._renderCallbacks.push(callback);
-            }
-
-            props = isFunction(props) ? props(this.state, this.props) : props;
-
-            if (isReplace) {
-                this.props = props;
-            } else {
-                extend(this.props, props);
-            }
-
-            setComponentProps(this, this.props, SYNC_RENDER, this.context);
-        },
-        isMounted: function() {
-            return this._isMounted;
-        },
-        getDOMNode: function() {
-            return this.base;
-        },
-        forceUpdate: function(callback) {
-            if (callback) {
-                this._renderCallbacks.push(callback);
-            }
-            renderComponent(this);
-        },
-        render: function(props, state) {
-            return null;
+        return c[cacheKey] || (c[cacheKey] = createLinkedState(this, key, eventPath));
+    };
+    Component.prototype.setState = function (state, callback, isReplace) {
+        if (typeof callback === 'boolean') {
+            isReplace = callback;
+            callback = null;
         }
-    });
-
-    function render(vnode, parent, merge) {
-        var built = diff(merge, vnode);
-
-        if (built.parentNode !== parent) {
-            parent.appendChild(built);
+        if (!this.prevState) {
+            this.prevState = clone(this.state);
+        }
+        if (callback) {
+            this._renderCallbacks.push(callback);
         }
 
-        return built;
-    }
+        state = isFunction(state) ? state(this.state, this.props) : state;
 
-    var preact = {
-        h: h,
-        Component: Component,
-        render: render,
-        rerender: rerender,
-        options: options,
-        hooks: options
+        if (isReplace) {
+            this.state = state;
+        } else {
+            extend(this.state, state);
+        }
+
+        triggerComponentRender(this);
+    };
+    Component.prototype.setProps = function (props, callback, isReplace) {
+        if (typeof callback === 'boolean') {
+            isReplace = callback;
+            callback = null;
+        }
+        if (!this.prevProps) {
+            this.prevProps = clone(this.props);
+        }
+        if (callback) {
+            this._renderCallbacks.push(callback);
+        }
+
+        props = isFunction(props) ? props(this.state, this.props) : props;
+
+        if (isReplace) {
+            this.props = props;
+        } else {
+            extend(this.props, props);
+        }
+
+        setComponentProps(this, this.props, SYNC_RENDER, this.context);
+    };
+    Component.prototype.isMounted = function () {
+        return this._isMounted;
+    };
+    Component.prototype.getDOMNode = function () {
+        return this.base;
+    };
+    Component.prototype.forceUpdate = function (callback) {
+        if (callback) {
+            this._renderCallbacks.push(callback);
+        }
+        renderComponent(this);
+    };
+    Component.prototype.render = function (props, state) {
+        console.log(state);
+        return null;
     };
 
-    /*以下内容是扩展的，为了不使用jsx*/
+    function render(merge, vnode) {
+        return diff(merge, vnode);
+    }
 
-    preact.createClass = function(obj) {
+    function createClass(obj) {
 
         function F() {
             Component.call(this);
@@ -1138,18 +1105,27 @@
 
         F.prototype = Object.create(Component.prototype);
 
-        for (var i in obj) {
-            if (i === 'getDefaultProps') {
-                F.defaultProps = obj['getDefaultProps']() || {};
-            } else {
-                F.prototype[i] = obj[i];
-            }
+        if (obj.getDefaultProps) {
+            F.defaultProps = obj.getDefaultProps();
+            delete obj.getDefaultProps;
+        } else {
+            F.defaultProps = {};
         }
 
-        F.prototype.constructor = F;
+        for (var i in obj) {
+            F.prototype[i] = obj[i];
+        }
 
-        return F;
+        return F.prototype.constructor = F;
+    }
+
+    return {
+        h: h,
+        hooks: options,
+        render: render,
+        options: options,
+        rerender: rerender,
+        Component: Component,
+        createClass: createClass
     };
-
-    return preact;
-});
+})(window);
