@@ -84,7 +84,7 @@ window.preact = (function(global) {
         return x === false || x == null;
     };
 
-    /******************************************/
+    /************************************************************************************/
 
     var EMPTY = {};
     var EMPTY_BASE = '';
@@ -166,7 +166,7 @@ window.preact = (function(global) {
     };
 
     var createNodeReplace = function(oldNode) {
-        var newNode = document.createElement('div');
+        var newNode = document.createElement(toLowerCase(oldNode.nodeName));
         var p = oldNode.parentNode;
         if (p) {
             p.replaceChild(newNode, oldNode);
@@ -329,7 +329,7 @@ window.preact = (function(global) {
         return node[ATTR_KEY] ? node[ATTR_KEY] : (node[ATTR_KEY] = getRawNodeAttributes(node));
     };
 
-    /******************************************/
+    /************************************************************************************/
 
     function VNode(nodeName, attributes, children) {
         this.nodeName = nodeName;
@@ -359,7 +359,6 @@ window.preact = (function(global) {
             }
         }
     });
-
 
     var NO_RENDER = {
         render: false
@@ -549,16 +548,12 @@ window.preact = (function(global) {
 
     function createComponent(ctor, props, context) {
         var list = components_cache[ctor.name],
-            len = list && list.length,
-            component;
-        for (var i = 0; i < len; i++) {
-            component = list[i];
-            if (component.constructor === ctor) {
-                list.splice(i, 1);
-                return component._reuse(props, context);
-            }
+            component = list && list.pop();
+        if (component) {
+            return component._reuse(props, context);
+        } else {
+            return new ctor(props, context);
         }
-        return new ctor(props, context);
     }
 
     function removeOrphanedChildren(children) {
@@ -611,6 +606,14 @@ window.preact = (function(global) {
         }
     }
 
+    function createNodeToVNode(vchild) {
+        if (isSimple(vchild)) {
+            return document.createTextNode('');
+        } else {
+            return isString(vchild.nodeName) ? document.createElement(vchild.nodeName) : document.createElement('div');
+        }
+    }
+
     /** 通过vNode来更新节点node的属性. */
 
     function diffAttributes(dom, vnode) {
@@ -637,8 +640,7 @@ window.preact = (function(global) {
         }
     }
 
-
-    /** 移除自定义组件.*/
+    /** 销毁组件.*/
 
     function unmountComponent(component, isRecursive) {
         hook(component, '__ref', null);
@@ -662,7 +664,7 @@ window.preact = (function(global) {
         component._isMounted = true;
     }
 
-    /** 渲染自定义组件.*/
+    /** 渲染组件.*/
 
     function renderComponent(component) {
         if (component._disableRendering) {
@@ -764,6 +766,7 @@ window.preact = (function(global) {
         }
     }
 
+    /* 异步渲染组件.**/
     var items = [],
         itemsOffline = [];
 
@@ -789,15 +792,12 @@ window.preact = (function(global) {
         }
     }
 
-    /**标记component为dirty,加入队列等待渲染.*/
-
     function triggerComponentRender(component) {
         if (!component._dirty) {
             component._dirty = true;
             enqueueRender(component);
         }
     }
-
 
     /** [opts.renderSync=false]	[opts.render=true].*/
 
@@ -841,9 +841,6 @@ window.preact = (function(global) {
         hook(component, '__ref', component);
     }
 
-
-    /** 实例化和渲染一个Component, VNode的nodeName是一个构造函数【继承自Component】.*/
-
     function createComponentFromVNode(dom, vnode, context) {
         var props = getNodeProps(vnode),
             component = createComponent(vnode.nodeName, props, context);
@@ -856,7 +853,7 @@ window.preact = (function(global) {
         return component.base;
     }
 
-    /** 构建组件. */
+    /** 构建组件, 新建或从缓存中获取. */
 
     function buildComponentFromVNode(dom, vnode, context) {
         var c = dom && dom._component,
@@ -879,7 +876,6 @@ window.preact = (function(global) {
         }
         return out;
     }
-
 
     function innerDiffNode(dom, vnode, context) {
         var len = dom.childNodes.length,
@@ -933,7 +929,7 @@ window.preact = (function(global) {
                 }
 
                 if (!child2) {
-                    child2 = document.createElement(isString(vchild.nodeName) ? vchild.nodeName : 'div');
+                    child2 = createNodeToVNode(vchild);
                     dom.insertBefore(child2, dom.childNodes[i] || null);
                 }
 
@@ -997,6 +993,9 @@ window.preact = (function(global) {
         return out;
     }
 
+    function render(merge, vnode, context) {
+        return diff(merge, vnode, context);
+    }
 
     /** 组件基类,createClass返回的的构造函数内自动调用.*/
 
@@ -1096,10 +1095,8 @@ window.preact = (function(global) {
     };
 
     function createClass(obj) {
-
-        function F() {
-            Component.call(this);
-        }
+        var F_Name = String(Math.random() + Math.random()).replace(/\d\.\d{4}/, 'Component'),
+            F = Function('Component', 'return function ' + F_Name + '() { Component.apply(this, arguments); };')(Component);
 
         F.prototype = Object.create(Component.prototype);
 
@@ -1109,7 +1106,6 @@ window.preact = (function(global) {
         } else {
             F.defaultProps = {};
         }
-
         for (var i in obj) {
             F.prototype[i] = obj[i];
         }
@@ -1120,10 +1116,9 @@ window.preact = (function(global) {
     return {
         h: h,
         hooks: options,
-        options: options,
+        render: render,
         rerender: rerender,
         Component: Component,
         createClass: createClass,
-        render: function(merge, vnode) { return diff(merge, vnode); }
     };
 })(window);
