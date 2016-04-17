@@ -1,6 +1,9 @@
 # study-preact
 学习preact内部实现方式
 了解生命周期
+*简单实现react功能*
+**通过react生命周期管理虚拟dom的生成**
+**通过钩子函数来修正生成的虚拟dom**
 ```javascript
 var h = preact.h;
 
