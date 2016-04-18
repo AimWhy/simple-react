@@ -73,7 +73,7 @@ window.preact = (function(global) {
         return x === false || x == null;
     };
 
-    /********************************************  dom  ********************************************/
+    /** ******************************************  dom  ******************************************* */
 
     var EMPTY = {};
 
@@ -265,7 +265,7 @@ window.preact = (function(global) {
         return node[ATTR_KEY] ? node[ATTR_KEY] : (node[ATTR_KEY] = getRawNodeAttributes(node));
     };
 
-    /********************************************  vnode  ********************************************/
+    /** ******************************************  vnode  ******************************************* */
 
     var SYNC_RENDER = {
         renderSync: true
@@ -368,7 +368,7 @@ window.preact = (function(global) {
         }
     }
 
-    /** 通过vNode来更新节点node的属性. */
+    /** 通过vNode来更新节点node的属性.*/
 
     function diffAttributes(dom, vnode) {
         var old = getNodeAttributes(dom) || EMPTY,
@@ -431,7 +431,7 @@ window.preact = (function(global) {
         return vnode.nodeName(getNodeProps(vnode), context || EMPTY) || EMPTY_BASE;
     }
 
-    /** DOM节点缓存池,以nodeName.toUpperCase()为键*/
+    /** DOM节点缓存池,以nodeName.toUpperCase()为键.*/
 
     var nodes_cache = {};
 
@@ -466,7 +466,7 @@ window.preact = (function(global) {
         return node;
     }
 
-    /** 组件DOM节点缓存池*/
+    /** 组件DOM节点缓存池.*/
 
     var components_cache = {};
 
@@ -492,7 +492,7 @@ window.preact = (function(global) {
         }
     }
 
-    /** 回收所有子节点 */
+    /** 回收所有子节点.*/
 
     function removeOrphanedChildren(children) {
         var len = children.length;
@@ -504,7 +504,7 @@ window.preact = (function(global) {
         }
     }
 
-    /** 回收节点树 */
+    /** 回收节点树.*/
 
     function recollectNodeTree(node) {
         var component = getAncestorComponent(node._component);
@@ -732,7 +732,7 @@ window.preact = (function(global) {
         return component;
     }
 
-    /* 异步渲染组件.**/
+    /** 异步渲染组件.*/
     var items = [],
         itemsOffline = [];
 
@@ -765,7 +765,7 @@ window.preact = (function(global) {
         }
     }
 
-    /** 构建组件, 新建或从缓存中获取. */
+    /** 构建组件, 新建或从缓存中获取.*/
 
     function buildAndRenderComponent(dom, vnode, context) {
         var component = createComponent(vnode.nodeName, getNodeProps(vnode), context);
@@ -877,7 +877,7 @@ window.preact = (function(global) {
         }
     }
 
-    //对某个节点进行渲染
+    /** 对某个节点进行渲染.*/
 
     function render(merge, vnode, context) {
         while (isFunctionalComponent(vnode)) {
