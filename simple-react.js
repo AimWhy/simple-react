@@ -14,14 +14,14 @@ window.preact = (function (global) {
         return ('function' !== type && 'object' !== type);
     };
 
-    var hasOwnProperty = function (obj, prop) {
-        return Object.prototype.hasOwnProperty.call(obj, prop);
+    var hasOwnProperty = function (obj, k) {
+        return Object.prototype.hasOwnProperty.call(obj, k);
     };
 
     var extend = function (obj, props) {
-        for (var i in props) {
-            if (hasOwnProperty(props, i)) {
-                obj[i] = props[i];
+        for (var k in props) {
+            if (hasOwnProperty(props, k)) {
+                obj[k] = props[k];
             }
         }
         return obj;
@@ -29,22 +29,22 @@ window.preact = (function (global) {
 
     var clone = function (obj) {
         var out = {};
-        for (var i in obj) {
-            out[i] = obj[i];
+        for (var k in obj) {
+            out[k] = obj[k];
         }
         return out;
     };
 
     var clear = function (obj) {
-        for (var key in obj) {
-            delete obj[key];
+        for (var k in obj) {
+            delete obj[k];
         }
     };
 
     var memoize = function (fn, mem) {
         mem = mem || {};
-        return function (k) {
-            return mem[k] ? mem[k] : mem[k] = fn(k);
+        return function (p) {
+            return mem[p] ? mem[p] : mem[p] = fn(p);
         };
     };
 
@@ -65,7 +65,7 @@ window.preact = (function (global) {
     };
 
     var hook = function (obj, name, a, b, c) {
-        return obj[name] ? obj[name](a, b, c) : void (0);
+        return obj[name] ? obj[name](a, b, c) : null;
     };
 
     var empty = function (x) {
@@ -125,7 +125,7 @@ window.preact = (function (global) {
             };
         } else {
             return function (fn) {
-                setTimeout(fn, 4);
+                global.setTimeout(fn, 4);
             };
         }
     })();
@@ -203,7 +203,7 @@ window.preact = (function (global) {
 
     var eventProxy = function (event) {
         var fn = this._listeners[normalizeEventName(event.type)];
-        return fn ? fn.call(this, optionsHook('event', event) || event) : void (0);
+        return fn ? fn.call(this, optionsHook('event', event) || event) : null;
     };
 
     var setComplexAccessor = function (node, name, value) {
@@ -215,10 +215,9 @@ window.preact = (function (global) {
             node[act + 'EventListener'](_type, eventProxy);
             l[_type] = value;
         } else {
-            var type = typeof value;
             if (falsey(value)) {
                 node.removeAttribute(name);
-            } else if (isSimple(type)) {
+            } else if (isSimple(value)) {
                 node.setAttribute(name, value);
             }
         }
@@ -260,7 +259,7 @@ window.preact = (function (global) {
     };
 
     var getNodeAttributes = function (node) {
-        return node[ATTR_KEY] ? node[ATTR_KEY] : (node[ATTR_KEY] = getRawNodeAttributes(node));
+        return node[ATTR_KEY] || (node[ATTR_KEY] = getRawNodeAttributes(node));
     };
 
     /** ******************************************  vnode  ******************************************* */
@@ -273,17 +272,35 @@ window.preact = (function (global) {
         syncComponentUpdates: false,
         vnode: function (n) {
             var attrs = n.attributes;
-            if (!isFunction(n.nodeName) && attrs) {
-                var p = attrs.className;
-                if (p) {
-                    attrs['class'] = p;
-                    delete attrs.className;
+            if (isString(n.nodeName)) {
+                if (attrs) {
+                    var cls = attrs.className;
+
+                    if (cls) {
+                        attrs['class'] = cls;
+                        delete attrs.className;
+                    }
+                    if (attrs['class']) {
+                        normalize(attrs, 'class', hashToClassName);
+                    }
+                    if (attrs.style) {
+                        normalize(attrs, 'style', styleObjToCss);
+                    }
                 }
-                if (attrs['class']) {
-                    normalize(attrs, 'class', hashToClassName);
+            } else {/** isComponent || isFunctionalComponent.*/
+                var defaultProps = n.nodeName.defaultProps;
+
+                n.attributes = attrs || {};
+                if (n.children) {
+                    n.attributes.children = n.children;
                 }
-                if (attrs.style) {
-                    normalize(attrs, 'style', styleObjToCss);
+
+                if (defaultProps) {
+                    for (var i in defaultProps) {
+                        if (!hasOwnProperty(n.attributes, i)) {
+                            n.attributes[i] = defaultProps[i];
+                        }
+                    }
                 }
             }
         }
@@ -300,22 +317,22 @@ window.preact = (function (global) {
     function h(nodeName, attributes) {
         var len = arguments.length,
             lastSimple = false,
-            children = void (0),
+            children = null,
             arr;
 
         if (attributes) {
             delete attributes.children;
         } else {
-            attributes = void (0);
+            attributes = null;
         }
 
         for (var i = 2; i < len; i++) {
-            var _p = arguments[i];
-            if (!falsey(_p)) {
-                if (_p.join) {
-                    arr = _p;
+            var arg = arguments[i];
+            if (!falsey(arg)) {
+                if (arg.join) {
+                    arr = arg;
                 } else {
-                    SHARED_TEMP_ARRAY[0] = _p;
+                    SHARED_TEMP_ARRAY[0] = arg;
                     arr = SHARED_TEMP_ARRAY;
                 }
 
@@ -326,11 +343,11 @@ window.preact = (function (global) {
                         if (simple) {
                             child = String(child);
                         }
-                        if (!children) {
+                        if (children === null) {
                             children = [];
                         }
                         if (simple && lastSimple) {
-                            children[children.length - 1] += child;
+                            children[children.length - 1] = children[children.length - 1] + child;
                         } else {
                             children.push(child);
                         }
@@ -390,28 +407,11 @@ window.preact = (function (global) {
         }
     }
 
-    function getNodeProps(vnode) {
-        var defaultProps = vnode.nodeName.defaultProps,
-            props = clone(vnode.attributes),
-            c = vnode.children;
-
-        if (c) {
-            props.children = c;
-        }
-        if (defaultProps) {
-            for (var i in defaultProps) {
-                if (!hasOwnProperty(props, i)) {
-                    props[i] = defaultProps[i];
-                }
-            }
-        }
-
-        return props;
-    }
-
     function buildFunctionalComponent(vnode, context) {
+        context = context || {};
+
         do {
-            vnode = vnode.nodeName(getNodeProps(vnode), context || EMPTY) || EMPTY_BASE;
+            vnode = vnode.nodeName(vnode.attributes, context) || EMPTY_BASE;
         } while (isFunctionalComponent(vnode));
 
         return vnode;
@@ -426,11 +426,11 @@ window.preact = (function (global) {
     }
 
     function collectNode(node) {
-        var attrs = getNodeAttributes(node),
+        var attrs = node[ATTR_KEY],
             name = toUpperCase(node.nodeName),
             list = nodes_cache[name] || (nodes_cache[name] = []);
 
-        hook(attrs, 'ref', null);
+        attrs && hook(attrs, 'ref', null);
         removeNode(node);
         cleanNode(node);
         list.push(node);
@@ -483,7 +483,6 @@ window.preact = (function (global) {
 
     function recollectNodeTree(node) {
         var ancestor = node._ancestor;
-
         if (ancestor) {
             unmountComponent(ancestor, true);
         } else {
@@ -517,9 +516,9 @@ window.preact = (function (global) {
         }
 
         collectComponent(component);
+        component._isMounted = true;
 
         hook(component, 'componentDidUnmount');
-        component._isMounted = true;
     }
 
     function createNodeToVNode(vchild) {
@@ -544,15 +543,16 @@ window.preact = (function (global) {
                 state = component.state,
                 stateRef = state,
                 node = this,
-                value;
+                value,
+                c;
 
             if (isString(eventPath)) {
                 value = delve(event, eventPath);
-                if (empty(value) && (node = node._component)) {
-                    value = delve(node, eventPath);
+                if (empty(value) && (c = node._component)) {
+                    value = delve(c, eventPath);
                 }
             } else {
-                value = (node.nodeName + node.type).match(/^input(checkbox|radio)$/i) ? node.checked : node.value;
+                value = (node.nodeName + node.type).match(/^input(check|rad)/i) ? node.checked : node.value;
             }
             if (isFunction(value)) {
                 value = value.call(node);
@@ -632,9 +632,9 @@ window.preact = (function (global) {
             component.state = previousState;
             component.context = previousContext;
 
-            if (hook(component, 'shouldComponentUpdate', props, state, context) === false) {
-                skip = true;
-            } else {
+            skip = hook(component, 'shouldComponentUpdate', props, state, context) === false;
+
+            if (!skip) {
                 hook(component, 'componentWillUpdate', props, state, context);
             }
 
@@ -661,7 +661,7 @@ window.preact = (function (global) {
                 inst && unmountComponent(inst);
 
                 if (!isSameNodeType(cbase, vnode)) {
-                    var next = cbase.nextSibling || null,
+                    var next = cbase.nextSibling,
                         parent = cbase.parentNode,
                         realBase = createNodeToVNode(vnode);
 
@@ -681,17 +681,17 @@ window.preact = (function (global) {
                 diff(cbase, vnode);
             } else {
                 var childComponent = vnode && vnode.nodeName,
-                    childContext = component.getChildContext ? component.getChildContext() : context,
-                    childProps = getNodeProps(vnode);
+                    childContext = component.getChildContext ? component.getChildContext() : context;
 
                 if (inst && inst.constructor === childComponent) {
-                    setComponentProps(inst, childProps, SYNC_RENDER, childContext);
+                    setComponentProps(inst, vnode.attributes, SYNC_RENDER, childContext);
                 } else {
                     inst && unmountComponent(inst);
-                    inst = renderComponent(buildAndRenderComponent(cbase, vnode, childContext));
-
+                    inst = buildAndRenderComponent(cbase, vnode, childContext);
                     component._component = inst;
                     inst._parentComponent = component;
+
+                    renderComponent(inst);
                 }
             }
 
@@ -711,7 +711,6 @@ window.preact = (function (global) {
                 fn.call(component);
             }
         }
-        return component;
     }
 
     var items = [],
@@ -746,7 +745,7 @@ window.preact = (function (global) {
     }
 
     function buildAndRenderComponent(dom, vnode, context) {
-        var component = createComponent(vnode.nodeName, getNodeProps(vnode), context);
+        var component = createComponent(vnode.nodeName, vnode.attributes, context);
         component.base = dom;
         return component;
     }
@@ -763,7 +762,6 @@ window.preact = (function (global) {
 
         for (var idx = 0; idx < len; idx++) {
             var child = dom.childNodes[idx];
-
             key = child._component ? child._component.__key : getAccessor(child, 'key');
             if (!empty(key)) {
                 keyed[key] = child;
@@ -776,10 +774,8 @@ window.preact = (function (global) {
         for (var i = 0; i < vlen; i++) {
             var vchild = vchildren[i],
                 child2 = null;
-
             if (keyedLen) {
                 var attrs = vchild.attributes;
-                
                 key = attrs && attrs.key;
                 if (!empty(key) && hasOwnProperty(keyed, key)) {
                     child2 = keyed[key];
@@ -787,6 +783,7 @@ window.preact = (function (global) {
                     keyedLen--;
                 }
             }
+
             if (!child2 && childrenLen) {
                 for (var j = 0; j < childrenLen; j++) {
                     if (isSameNodeType(children[j], vchild)) {
@@ -797,9 +794,11 @@ window.preact = (function (global) {
                     }
                 }
             }
+
             if (!child2) {
                 child2 = createNodeToVNode(vchild);
             }
+
             if (child2 !== dom.childNodes[i]) {
                 dom.insertBefore(child2, dom.childNodes[i] || null);
             }
@@ -866,7 +865,7 @@ window.preact = (function (global) {
         }
 
         if (oldAncestor && vnode.nodeName === oldAncestor.constructor) {
-            setComponentProps(oldAncestor, getNodeProps(vnode), SYNC_RENDER, context);
+            setComponentProps(oldAncestor, vnode.attributes, SYNC_RENDER, context);
         } else {
             if (oldAncestor) {
                 unmountComponent(oldAncestor);
@@ -874,6 +873,7 @@ window.preact = (function (global) {
 
             if (isFunction(vnode.nodeName)) {
                 var newAncestor = buildAndRenderComponent(merge, vnode);
+
                 merge._ancestor = newAncestor;
                 merge._ancestorConstructor = newAncestor.constructor;
                 renderComponent(newAncestor);
