@@ -1,24 +1,24 @@
-window.preact = (function(global) {
+window.preact = (function (global) {
     'use strict';
 
-    var isFunction = function(obj) {
+    var isFunction = function (obj) {
         return 'function' === typeof obj;
     };
 
-    var isString = function(obj) {
+    var isString = function (obj) {
         return 'string' === typeof obj;
     };
 
-    var isSimple = function(obj) {
+    var isSimple = function (obj) {
         var type = typeof obj;
         return ('function' !== type && 'object' !== type);
     };
 
-    var hasOwnProperty = function(obj, prop) {
+    var hasOwnProperty = function (obj, prop) {
         return Object.prototype.hasOwnProperty.call(obj, prop);
     };
 
-    var extend = function(obj, props) {
+    var extend = function (obj, props) {
         for (var i in props) {
             if (hasOwnProperty(props, i)) {
                 obj[i] = props[i];
@@ -27,7 +27,7 @@ window.preact = (function(global) {
         return obj;
     };
 
-    var clone = function(obj) {
+    var clone = function (obj) {
         var out = {};
         for (var i in obj) {
             out[i] = obj[i];
@@ -35,28 +35,28 @@ window.preact = (function(global) {
         return out;
     };
 
-    var clear = function(obj) {
+    var clear = function (obj) {
         for (var key in obj) {
             delete obj[key];
         }
     };
 
-    var memoize = function(fn, mem) {
+    var memoize = function (fn, mem) {
         mem = mem || {};
-        return function(k) {
+        return function (k) {
             return mem[k] ? mem[k] : mem[k] = fn(k);
         };
     };
 
-    var toLowerCase = memoize(function(name) {
+    var toLowerCase = memoize(function (name) {
         return name.toLowerCase();
     });
 
-    var toUpperCase = memoize(function(name) {
+    var toUpperCase = memoize(function (name) {
         return name.toUpperCase();
     });
 
-    var delve = function(obj, key) {
+    var delve = function (obj, key) {
         var keys = key.split('.');
         for (var i = 0, len = keys.length; i < len && obj; i++) {
             obj = obj[keys[i]];
@@ -64,15 +64,15 @@ window.preact = (function(global) {
         return obj;
     };
 
-    var hook = function(obj, name, a, b, c) {
-        return obj[name] ? obj[name](a, b, c) : void(0);
+    var hook = function (obj, name, a, b, c) {
+        return obj[name] ? obj[name](a, b, c) : void (0);
     };
 
-    var empty = function(x) {
+    var empty = function (x) {
         return x == null;
     };
 
-    var falsey = function(x) {
+    var falsey = function (x) {
         return x === false || x == null;
     };
 
@@ -88,17 +88,17 @@ window.preact = (function(global) {
 
     var NON_DIMENSION_PROPS = {};
     ['boxFlex', 'boxFlexGroup', 'columnCount', 'fillOpacity', 'flex', 'flexGrow', 'flexPositive', 'flexShrink', 'flexNegative', 'fontWeight',
-        'lineClamp', 'lineHeight', 'opacity', 'order', 'orphans', 'strokeOpacity', 'widows', 'zIndex', 'zoom'].forEach(function(val) {
+        'lineClamp', 'lineHeight', 'opacity', 'order', 'orphans', 'strokeOpacity', 'widows', 'zIndex', 'zoom'].forEach(function (val) {
             NON_DIMENSION_PROPS[val] = true;
         });
 
     var options = {};
 
-    var optionsHook = function(name, a, b) {
+    var optionsHook = function (name, a, b) {
         return hook(options, name, a, b);
     };
 
-    var setImmediate = (function() {
+    var setImmediate = (function () {
         var tickImmediate = global.setImmediate,
             tickObserver = global.MutationObserver;
         if (tickImmediate) {
@@ -108,7 +108,7 @@ window.preact = (function(global) {
                 queue = [],
                 bool = false,
                 f = null,
-                callback = function() {
+                callback = function () {
                     while (f = queue.shift()) {
                         f();
                     }
@@ -118,42 +118,42 @@ window.preact = (function(global) {
                 characterData: true
             });
 
-            return function(fn) {
+            return function (fn) {
                 queue.push(fn);
                 bool = !bool;
                 node.data = bool;
             };
         } else {
-            return function(fn) {
+            return function (fn) {
                 setTimeout(fn, 4);
             };
         }
     })();
 
-    var removeNode = function(node) {
+    var removeNode = function (node) {
         var p = node.parentNode;
         if (p) {
             p.removeChild(node);
         }
     };
 
-    var getNodeType = function(node) {
+    var getNodeType = function (node) {
         return node.nodeType;
     };
 
-    var ensureNodeData = function(node) {
+    var ensureNodeData = function (node) {
         return node[ATTR_KEY] || (node[ATTR_KEY] = {});
     };
 
     /** fontSize -> font-size.*/
 
-    var jsToCss = memoize(function(s) {
+    var jsToCss = memoize(function (s) {
         return s.replace(/([A-Z])/g, '-$1').toLowerCase();
     });
 
     /** {zIndex:100, fontSize:14} -> 'z-index:100; font-size:14px;'.*/
 
-    var styleObjToCss = function(style) {
+    var styleObjToCss = function (style) {
         var str = '';
         for (var p in style) {
             var val = style[p];
@@ -166,7 +166,7 @@ window.preact = (function(global) {
 
     /** {class1:true, class2:false, class3:1} -> 'class1 class3'.*/
 
-    var hashToClassName = function(cls) {
+    var hashToClassName = function (cls) {
         var str = '';
         for (var c in cls) {
             if (cls[c]) {
@@ -178,14 +178,14 @@ window.preact = (function(global) {
 
     /** 把style和class属性对应的object转成字符串, 使用上面两个方法.*/
 
-    var normalize = function(obj, prop, fn) {
+    var normalize = function (obj, prop, fn) {
         var v = obj[prop];
         if (v && !isString(v)) {
             obj[prop] = fn(v);
         }
     };
 
-    var getAccessor = function(node, name) {
+    var getAccessor = function (node, name) {
         if (name === 'class') {
             return node.className;
         } else if (name === 'style') {
@@ -197,16 +197,16 @@ window.preact = (function(global) {
         }
     };
 
-    var normalizeEventName = memoize(function(t) {
+    var normalizeEventName = memoize(function (t) {
         return t.replace(/^on/i, '').toLowerCase();
     });
 
-    var eventProxy = function(event) {
+    var eventProxy = function (event) {
         var fn = this._listeners[normalizeEventName(event.type)];
-        return fn ? fn.call(this, optionsHook('event', event) || event) : void(0);
+        return fn ? fn.call(this, optionsHook('event', event) || event) : void (0);
     };
 
-    var setComplexAccessor = function(node, name, value) {
+    var setComplexAccessor = function (node, name, value) {
         if (name.substring(0, 2) === 'on') {
             var _type = normalizeEventName(name),
                 l = node._listeners || (node._listeners = {}),
@@ -224,7 +224,7 @@ window.preact = (function(global) {
         }
     };
 
-    var setAccessor = function(node, name, value) {
+    var setAccessor = function (node, name, value) {
         if (name === 'class') {
             node.className = value || '';
         } else if (name === 'style') {
@@ -244,7 +244,7 @@ window.preact = (function(global) {
         ensureNodeData(node)[name] = value;
     };
 
-    var getAttributesAsObject = function(list) {
+    var getAttributesAsObject = function (list) {
         var attrs = {},
             len = list.length;
         while (len--) {
@@ -254,12 +254,12 @@ window.preact = (function(global) {
         return attrs;
     };
 
-    var getRawNodeAttributes = function(node) {
+    var getRawNodeAttributes = function (node) {
         var list = node.attributes;
         return (list && list.getNamedItem) ? getAttributesAsObject(list) : list;
     };
 
-    var getNodeAttributes = function(node) {
+    var getNodeAttributes = function (node) {
         return node[ATTR_KEY] ? node[ATTR_KEY] : (node[ATTR_KEY] = getRawNodeAttributes(node));
     };
 
@@ -271,7 +271,7 @@ window.preact = (function(global) {
 
     extend(options, {
         syncComponentUpdates: false,
-        vnode: function(n) {
+        vnode: function (n) {
             var attrs = n.attributes;
             if (!isFunction(n.nodeName) && attrs) {
                 var p = attrs.className;
@@ -300,13 +300,13 @@ window.preact = (function(global) {
     function h(nodeName, attributes) {
         var len = arguments.length,
             lastSimple = false,
-            children = void(0),
+            children = void (0),
             arr;
 
         if (attributes) {
             delete attributes.children;
         } else {
-            attributes = void(0);
+            attributes = void (0);
         }
 
         for (var i = 2; i < len; i++) {
@@ -539,7 +539,7 @@ window.preact = (function(global) {
             len = path.length,
             p0 = path[0];
 
-        return function(event) {
+        return function (event) {
             var _component$setState = {},
                 state = component.state,
                 stateRef = state,
@@ -752,64 +752,59 @@ window.preact = (function(global) {
     }
 
     function innerDiffNode(dom, vnode) {
-        var len = dom.childNodes.length,
+        var vchildren = vnode.children,
+            vlen = vchildren.length,
+            len = dom.childNodes.length,
             childrenLen = 0,
-            keyedLen = 0,
             children = [],
+            keyedLen = 0,
             keyed = {},
             key;
 
-        if (len) {
-            for (var idx = 0; idx < len; idx++) {
-                var child = dom.childNodes[idx];
+        for (var idx = 0; idx < len; idx++) {
+            var child = dom.childNodes[idx];
 
-                key = child._component ? child._component.__key : getAccessor(child, 'key');
-                if (!empty(key)) {
-                    keyed[key] = child;
-                    keyedLen++;
-                } else {
-                    children[childrenLen++] = child;
-                }
+            key = child._component ? child._component.__key : getAccessor(child, 'key');
+            if (!empty(key)) {
+                keyed[key] = child;
+                keyedLen++;
+            } else {
+                children[childrenLen++] = child;
             }
         }
 
-        var vchildren = vnode.children,
-            vlen = vchildren && vchildren.length;
+        for (var i = 0; i < vlen; i++) {
+            var vchild = vchildren[i],
+                child2 = null;
 
-        if (vlen) {
-            for (var i = 0; i < vlen; i++) {
-                var vchild = vchildren[i],
-                    child2 = null;
-
-                if (keyedLen) {
-                    var attrs = vchild.attributes;
-                    key = attrs && attrs.key;
-                    if (!empty(key) && hasOwnProperty(keyed, key)) {
-                        child2 = keyed[key];
-                        delete keyed[key];
-                        keyedLen--;
-                    }
+            if (keyedLen) {
+                var attrs = vchild.attributes;
+                
+                key = attrs && attrs.key;
+                if (!empty(key) && hasOwnProperty(keyed, key)) {
+                    child2 = keyed[key];
+                    delete keyed[key];
+                    keyedLen--;
                 }
-                if (!child2 && childrenLen) {
-                    for (var j = 0; j < childrenLen; j++) {
-                        if (isSameNodeType(children[j], vchild)) {
-                            child2 = children[j];
-                            children.splice(j, 1);
-                            childrenLen--;
-                            break;
-                        }
-                    }
-                }
-                if (!child2) {
-                    child2 = createNodeToVNode(vchild);
-                }
-
-                if (child2 !== dom.childNodes[i]) {
-                    dom.insertBefore(child2, dom.childNodes[i] || null);
-                }
-
-                render(child2, vchild);
             }
+            if (!child2 && childrenLen) {
+                for (var j = 0; j < childrenLen; j++) {
+                    if (isSameNodeType(children[j], vchild)) {
+                        child2 = children[j];
+                        children.splice(j, 1);
+                        childrenLen--;
+                        break;
+                    }
+                }
+            }
+            if (!child2) {
+                child2 = createNodeToVNode(vchild);
+            }
+            if (child2 !== dom.childNodes[i]) {
+                dom.insertBefore(child2, dom.childNodes[i] || null);
+            }
+
+            render(child2, vchild);
         }
 
         if (keyedLen) {
@@ -848,7 +843,12 @@ window.preact = (function(global) {
                 parent.insertBefore(out, next);
             }
 
-            innerDiffNode(out, vnode);
+            if (vnode.children && vnode.children.length) {
+                innerDiffNode(out, vnode);
+            } else {
+                out.childNodes.length && removeOrphanedChildren(out.childNodes);
+            }
+
             diffAttributes(out, vnode);
 
             if (originalAttributes && originalAttributes.ref) {
@@ -894,16 +894,16 @@ window.preact = (function(global) {
         return this;
     }
 
-    Component.prototype.shouldComponentUpdate = function(props, state, context) {
+    Component.prototype.shouldComponentUpdate = function (props, state, context) {
         return true;
     };
-    Component.prototype.linkState = function(key, eventPath) {
+    Component.prototype.linkState = function (key, eventPath) {
         var c = this._linkedStates || (this._linkedStates = {}),
             cacheKey = key + '|' + (eventPath || '');
 
         return c[cacheKey] || (c[cacheKey] = createLinkedState(this, key, eventPath));
     };
-    Component.prototype.setState = function(state, callback, isReplace) {
+    Component.prototype.setState = function (state, callback, isReplace) {
         if (typeof callback === 'boolean') {
             isReplace = callback;
             callback = null;
@@ -925,7 +925,7 @@ window.preact = (function(global) {
 
         triggerComponentRender(this);
     };
-    Component.prototype.setProps = function(props, callback, isReplace) {
+    Component.prototype.setProps = function (props, callback, isReplace) {
         if (typeof callback === 'boolean') {
             isReplace = callback;
             callback = null;
@@ -946,22 +946,22 @@ window.preact = (function(global) {
 
         setComponentProps(this, props);
     };
-    Component.prototype.isMounted = function() {
+    Component.prototype.isMounted = function () {
         return this._isMounted;
     };
-    Component.prototype.getDOMNode = function() {
+    Component.prototype.getDOMNode = function () {
         return this.base;
     };
-    Component.prototype.forceUpdate = function(callback) {
+    Component.prototype.forceUpdate = function (callback) {
         if (callback) {
             this._renderCallbacks.push(callback);
         }
         renderComponent(this);
     };
-    Component.prototype.render = function(props, state) {
+    Component.prototype.render = function (props, state) {
         return null;
     };
-    Component.prototype.clean = function() {
+    Component.prototype.clean = function () {
         this._dirty = this._disableRendering = this._isMounted = false;
         this._parentComponent = this._component = this.__ref = this.__key = null;
         this.prevState = this.prevProps = this.prevContext = this.base = null;
